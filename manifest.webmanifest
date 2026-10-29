@@ -1,0 +1,9 @@
+{
+  "name": "Route Rehearser",
+  "short_name": "Rehearser",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1d3557",
+  "theme_color": "#1d3557",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

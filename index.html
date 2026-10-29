@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1d3557">
+  <title>Route Rehearser</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Route Rehearser</h1>
+    <nav>
+      <button id="btnRoutes" type="button">Saved</button>
+      <button id="btnUsage" type="button">Usage</button>
+      <button id="btnHelp" type="button">Help</button>
+    </nav>
+  </header>
+  <div id="usageStrip" class="strip"></div>
+
+  <main>
+    <!-- PLAN: build the route -->
+    <section id="plan" class="view">
+      <form id="routeForm" class="form">
+        <input id="from" placeholder="From, e.g. Newport railway station" autocomplete="off" required>
+        <input id="to" placeholder="To, e.g. Tesco Spytty" autocomplete="off" required>
+        <button type="submit" class="primary">Find route</button>
+      </form>
+      <div class="mapwrap">
+        <div id="map"></div>
+        <div id="mapHint" class="hint" hidden></div>
+      </div>
+      <div id="routeInfo" class="info" hidden>
+        <p id="routeSummary"></p>
+        <div class="row">
+          <button id="btnAddVia" type="button">+ Via point</button>
+          <ul id="viaList" class="vias"></ul>
+        </div>
+        <div class="row">
+          <button id="btnSave" type="button">Save route</button>
+          <button id="btnRehearse" type="button" class="primary grow">Rehearse ▶</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- DRIVE: step along the route in Street View -->
+    <section id="drive" class="view" hidden>
+      <div class="panowrap">
+        <div id="pano"></div>
+        <div id="imgDate" class="badge date"></div>
+        <div id="posText" class="badge pos"></div>
+        <button id="btnRecentre" type="button" class="recentre">Recentre</button>
+        <div id="loading" class="loading" hidden>
+          <p>Finding Street View images along your route…</p>
+          <progress id="loadBar" max="1" value="0"></progress>
+          <small>These look-ups are free. It only does this once per route each visit.</small>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="scrub">
+          <div id="track" class="track"></div>
+          <input id="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Position along route">
+        </div>
+        <div class="buttons">
+          <button id="btnExit" type="button" title="Back to map">Map</button>
+          <button id="btnBack" type="button" aria-label="Step back">⏮</button>
+          <button id="btnPlay" type="button" class="primary play" aria-label="Play">▶</button>
+          <button id="btnFwd" type="button" aria-label="Step forward">⏭</button>
+          <select id="speed" aria-label="Play speed">
+            <option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+          </select>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="dlgRoutes">
+    <h2>Saved routes</h2>
+    <p class="small">Saved in this browser on this device only.</p>
+    <ul id="routeList" class="list"></ul>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <dialog id="dlgUsage">
+    <h2>Google usage this month</h2>
+    <table id="usageTable"></table>
+    <h3>This visit</h3>
+    <p id="sessionUsage"></p>
+    <p class="small">These counts are for <b>this device only</b>. Google's own figures (Cloud console → Google Maps Platform → Metrics) are the true ones. Street View should go up by about 1 per visit, however much you step.</p>
+    <label class="check"><input id="showUsage" type="checkbox"> Show the usage line at the top</label>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <dialog id="dlgHelp">
+    <h2>How it works</h2>
+    <ol class="small">
+      <li>Type where you start and where you're going, then <b>Find route</b>.</li>
+      <li>If it's not the way your instructor goes, tap <b>+ Via point</b> then tap the road it should use. Drag a numbered pin to move it.</li>
+      <li><b>Rehearse</b> walks you along the route in Street View. Step with ⏮ ⏭ (or arrow keys), or press ▶ to play.</li>
+      <li>You can drag the picture to look around. <b>Recentre</b> faces you back down the road.</li>
+      <li>Grey on the slider = no Street View there, so it skips that bit.</li>
+    </ol>
+    <h3>Google key</h3>
+    <p class="small">Only needed if the app says it has no key. Paste it here and press Save.</p>
+    <input id="apiKey" placeholder="Paste API key" autocomplete="off">
+    <form method="dialog" class="row">
+      <button id="btnSaveKey" value="save" class="primary">Save</button>
+      <button>Close</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
