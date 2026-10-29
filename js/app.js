@@ -93,7 +93,9 @@ async function recompute(base) {
     console.error(err);
     hint('');
     toast(
-      base.vias.length
+      err.safety
+        ? err.message
+        : base.vias.length
         ? "Couldn't route through that via point. Try putting it right on a road."
         : "Couldn't find that route. Try adding the town, e.g. 'High Street, Newport'.",
       6000
@@ -228,7 +230,12 @@ async function rehearse() {
   if (!state.route) return;
   toggleAddVia(false);
   showView('drive');
-  state.pano ||= await G.getPanorama($('pano'));
+  try {
+    state.pano ||= await G.getPanorama($('pano'));
+  } catch (err) {
+    toast(err.message, 6000);
+    return showView('plan');
+  }
   const key = routeKey(state.route);
   if (state.imagery?.key !== key) {
     $('loading').hidden = false;

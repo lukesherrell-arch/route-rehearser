@@ -2,7 +2,7 @@
 // counted. Design rule: ONE Street View panorama per page visit, moved with
 // setPano(), so stepping shouldn't add charges.
 
-import { count } from './usage.js';
+import { count, guard } from './usage.js';
 
 let loading = null;
 let authFailed = () => {};
@@ -44,6 +44,7 @@ export const lib = {};
 
 export async function createMap(el) {
   if (map) return map;
+  guard('maps');
   const { Map, Polyline } = await google.maps.importLibrary('maps');
   const { Marker } = await google.maps.importLibrary('marker');
   const { LatLngBounds } = await google.maps.importLibrary('core');
@@ -65,6 +66,7 @@ let pano = null;
 
 export async function getPanorama(el) {
   if (pano) return pano;
+  guard('streetview');
   const { StreetViewPanorama } = await google.maps.importLibrary('streetView');
   pano = new StreetViewPanorama(el, {
     disableDefaultUI: true,
@@ -142,6 +144,7 @@ const ll = (p) => ({
 // Works out a driving route (one billable call). Via points make the route
 // pass through a spot without stopping there.
 export async function computeRoute({ from, to, vias }) {
+  guard('routes');
   const { Route } = await google.maps.importLibrary('routes');
   count('routes');
   const req = {
