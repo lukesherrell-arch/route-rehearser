@@ -95,6 +95,8 @@ async function recompute(base) {
     toast(
       err.safety
         ? err.message
+        : /PERMISSION_DENIED|referer|API key/i.test(err.message)
+        ? 'Google blocked the route request. Check the key\'s website restriction and that Routes API is allowed.'
         : base.vias.length
         ? "Couldn't route through that via point. Try putting it right on a road."
         : "Couldn't find that route. Try adding the town, e.g. 'High Street, Newport'.",
