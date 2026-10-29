@@ -301,6 +301,10 @@ function show(i) {
 function facePath() {
   const img = state.imagery.images[state.idx];
   state.pano.setPov({ heading: img.heading, pitch: -8 });
+}
+
+function recentre() {
+  facePath();
   state.pano.setZoom(1);
 }
 
@@ -317,11 +321,9 @@ function play() {
   $('btnPlay').textContent = '⏸';
   $('btnPlay').setAttribute('aria-label', 'Pause');
   const tick = () => {
-    const speed = +$('speed').value;
-    const stride = speed >= 8 ? 2 : 1;
     if (state.idx >= imgs.length - 1) return stop();
-    show(state.idx + stride);
-    state.timer = setTimeout(tick, Math.max(350, 1600 / speed));
+    show(state.idx + 1);
+    state.timer = setTimeout(tick, 1600 / +$('speed').value);
   };
   state.timer = setTimeout(tick, 300);
 }
@@ -358,10 +360,11 @@ function wire() {
   $('btnSave').onclick = saveCurrent;
   $('btnRehearse').onclick = rehearse;
   $('btnExit').onclick = () => showView('plan');
+  $('btnSave2').onclick = () => (stop(), saveCurrent());
   $('btnBack').onclick = () => (stop(), step(-1));
   $('btnFwd').onclick = () => (stop(), step(1));
   $('btnPlay').onclick = play;
-  $('btnRecentre').onclick = facePath;
+  $('btnRecentre').onclick = recentre;
   $('scrub').oninput = (e) => scrubTo(+e.target.value);
 
   $('btnRoutes').onclick = () => (renderRouteList(), $('dlgRoutes').showModal());
