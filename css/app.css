@@ -81,11 +81,50 @@ main { flex: 1; min-height: 0; display: flex; }
   padding: 3px 8px; border-radius: 6px; pointer-events: none; z-index: 2;
 }
 .badge:empty { display: none; }
-.date { left: 8px; bottom: 26px; }
-.pos { left: 8px; top: 8px; font-size: 14px; }
-.recentre { position: absolute; z-index: 2; right: 8px; top: 8px; min-height: 36px; background: rgba(255,255,255,.9); }
+.date { left: 8px; bottom: 4px; }
+.recentre { position: absolute; z-index: 2; right: 8px; top: 136px; min-height: 36px; background: rgba(255,255,255,.9); }
+
+/* Sat-nav banner */
+.banner {
+  position: absolute; z-index: 2; left: 8px; right: 8px; top: 8px;
+  display: flex; gap: 12px; align-items: center;
+  background: rgba(20, 90, 50, .92); color: #fff; border-radius: 12px; padding: 8px 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+.banner[hidden] { display: none; }
+.bn-icon { font-size: 38px; line-height: 1; width: 44px; text-align: center; }
+.bn-text { min-width: 0; }
+.bn-dist { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.bn-instr { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bn-lane { font-size: 13px; color: #c9f2d6; }
+.bn-lane:empty { display: none; }
+
+/* Checkpoint card */
+.cpcard {
+  position: absolute; z-index: 2; left: 8px; bottom: 26px; right: 136px; max-width: 420px;
+  background: rgba(255, 248, 230, .96); color: #3b2a00; border-left: 5px solid #f08c00;
+  border-radius: 10px; padding: 8px 10px; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+.cpcard[hidden] { display: none; }
+.cp-head { padding-right: 40px; }
+.cp-note { margin-top: 2px; }
+.cpcard .link { position: absolute; right: 6px; top: 4px; }
+button.link { background: none; border: 0; color: var(--accent); min-height: 0; padding: 2px 6px; font-size: 14px; }
+
+/* Mini-map */
+.mini {
+  position: absolute; z-index: 2; right: 8px; bottom: 26px; width: 120px; height: 120px;
+  border-radius: 50%; overflow: hidden; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  background: #e5e3df; cursor: pointer; transition: width .2s, height .2s, border-radius .2s;
+}
+.mini.big { width: min(70vw, 360px); height: min(45vh, 360px); border-radius: 14px; }
+#miniMap { position: absolute; inset: 0; }
+.car {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--car, 0deg));
+  color: #2a7de1; font-size: 22px; text-shadow: 0 0 3px #fff, 0 0 3px #fff; pointer-events: none;
+}
 .toast {
-  position: fixed; z-index: 10; left: 50%; bottom: 130px; transform: translateX(-50%);
+  position: fixed; z-index: 10; left: 50%; top: 38%; transform: translateX(-50%);
   background: rgba(0,0,0,.75); color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 14px; max-width: 90%; text-align: center;
 }
 .loading {
@@ -103,6 +142,10 @@ main { flex: 1; min-height: 0; display: flex; }
 .scrub { position: relative; height: 30px; }
 .track { position: absolute; left: 0; right: 0; top: 11px; height: 8px; border-radius: 4px; background: #c9e0fb; overflow: hidden; }
 .track i { position: absolute; top: 0; bottom: 0; background: var(--gap); }
+.ticks { position: absolute; left: 0; right: 0; top: 7px; height: 16px; pointer-events: none; }
+.ticks b { position: absolute; width: 3px; height: 16px; margin-left: -1px; background: #f08c00; border-radius: 2px; }
+.tools { margin-bottom: 2px; }
+.tools button { min-height: 34px; padding: 4px 10px; font-size: 14px; }
 .scrub input { position: absolute; inset: 0; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; -webkit-appearance: none; appearance: none; }
 .scrub input::-webkit-slider-runnable-track { background: transparent; height: 30px; }
 .scrub input::-moz-range-track { background: transparent; }
@@ -127,7 +170,14 @@ dialog form { margin-top: 12px; }
 .list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
 .list li { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .list li b { display: block; }
+.list li.dim { opacity: .55; }
+.list .tag { font-size: 12px; color: var(--muted); }
+.stack { display: grid; gap: 8px; }
+.stack label { display: grid; gap: 2px; font-size: 14px; }
+.stack label.check { display: flex; }
+textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; background: var(--card); color: var(--ink); }
 .list .row { margin-top: 6px; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
 td:last-child { text-align: right; white-space: nowrap; }
+.list .row button { min-height: 36px; padding: 4px 10px; font-size: 14px; }

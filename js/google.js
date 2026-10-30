@@ -62,6 +62,28 @@ export async function createMap(el) {
   return map;
 }
 
+// Small sat-nav style map shown while rehearsing (one extra map load per visit).
+// With a vector Map ID it can turn heading-up; without one it stays north-up.
+let mini = null;
+
+export async function createMiniMap(el, mapId) {
+  if (mini) return mini;
+  guard('maps');
+  const { Map } = await google.maps.importLibrary('maps');
+  const opts = {
+    center: NEWPORT,
+    zoom: 17,
+    disableDefaultUI: true,
+    gestureHandling: 'none',
+    keyboardShortcuts: false,
+    clickableIcons: false,
+  };
+  if (mapId) Object.assign(opts, { mapId, renderingType: 'VECTOR', headingInteractionEnabled: false });
+  mini = new Map(el, opts);
+  count('maps');
+  return mini;
+}
+
 let pano = null;
 
 export async function getPanorama(el) {

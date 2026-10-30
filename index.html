@@ -13,7 +13,7 @@
   <header class="top">
     <h1>Route Rehearser</h1>
     <nav>
-      <button id="btnRoutes" type="button">My routes</button>
+      <button id="btnRoutes" type="button">Routes</button>
       <button id="btnUsage" type="button">Usage</button>
       <button id="btnHelp" type="button">Help</button>
     </nav>
@@ -49,9 +49,25 @@
     <section id="drive" class="view" hidden>
       <div class="panowrap">
         <div id="pano"></div>
+        <div id="banner" class="banner" hidden>
+          <div id="bnIcon" class="bn-icon"></div>
+          <div class="bn-text">
+            <div id="bnDist" class="bn-dist"></div>
+            <div id="bnText" class="bn-instr"></div>
+            <div id="bnLane" class="bn-lane"></div>
+          </div>
+        </div>
         <div id="imgDate" class="badge date"></div>
-        <div id="posText" class="badge pos"></div>
         <button id="btnRecentre" type="button" class="recentre">Recentre</button>
+        <div id="cpCard" class="cpcard" hidden>
+          <div class="cp-head"><span id="cpIcon"></span> <b id="cpTitle"></b> <span id="cpDist" class="small"></span></div>
+          <div id="cpNote" class="cp-note"></div>
+          <button id="cpEdit" type="button" class="link">Edit</button>
+        </div>
+        <div id="miniWrap" class="mini" title="Tap to make bigger">
+          <div id="miniMap"></div>
+          <div id="miniCar" class="car">▲</div>
+        </div>
         <div id="loading" class="loading" hidden>
           <p>Finding Street View images along your route…</p>
           <progress id="loadBar" max="1" value="0"></progress>
@@ -59,13 +75,19 @@
         </div>
       </div>
       <div class="controls">
+        <div class="row tools">
+          <span id="posText" class="small grow"></span>
+          <button id="btnCps" type="button">Checkpoints</button>
+          <button id="btnPin" type="button">📍 Pin here</button>
+          <button id="btnSave2" type="button">Save</button>
+        </div>
         <div class="scrub">
           <div id="track" class="track"></div>
+          <div id="ticks" class="ticks"></div>
           <input id="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Position along route">
         </div>
         <div class="buttons">
           <button id="btnExit" type="button" title="Back to map">Map</button>
-          <button id="btnSave2" type="button" title="Save this route">Save</button>
           <button id="btnBack" type="button" aria-label="Step back">⏮</button>
           <button id="btnPlay" type="button" class="primary play" aria-label="Play">▶</button>
           <button id="btnFwd" type="button" aria-label="Step forward">⏭</button>
@@ -78,10 +100,37 @@
   </main>
 
   <dialog id="dlgRoutes">
-    <h2>Saved routes</h2>
-    <p class="small">Saved in this browser on this device only.</p>
+    <h2>My routes</h2>
+    <p class="small">Saved in this browser on this device only. Use <b>Export</b> to back them up or move them to your other device, then <b>Import</b> the file there.</p>
+    <div class="row">
+      <button id="btnExport" type="button">Export all</button>
+      <button id="btnImport" type="button">Import…</button>
+      <input id="importFile" type="file" accept=".json,application/json" hidden>
+    </div>
     <ul id="routeList" class="list"></ul>
     <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <dialog id="dlgCps">
+    <h2>Checkpoints</h2>
+    <p class="small">Tap one to go just before it. Ones marked "auto" came from the directions; you can edit, hide or delete any of them.</p>
+    <ul id="cpList" class="list"></ul>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <dialog id="dlgPin">
+    <h2 id="pinHeading">Pin here</h2>
+    <form id="pinForm" method="dialog" class="stack">
+      <label>Type <select id="pinType"></select></label>
+      <label>Title <input id="pinTitle" placeholder="e.g. Box junction by the bridge" autocomplete="off"></label>
+      <label>Note <textarea id="pinNote" rows="3" placeholder="e.g. Wait until the exit is clear"></textarea></label>
+      <label class="check"><input id="pinHidden" type="checkbox"> Hide this checkpoint</label>
+      <div class="row">
+        <button value="save" class="primary">Save</button>
+        <button value="delete" id="pinDelete" type="submit">Delete</button>
+        <button value="cancel">Cancel</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="dlgUsage">
@@ -102,7 +151,10 @@
       <li>If it's not the way your instructor goes, tap <b>+ Via point</b> then tap the road it should use. Drag a numbered pin to move it.</li>
       <li><b>Rehearse</b> walks you along the route in Street View. Step with ⏮ ⏭ (or arrow keys), or press ▶ to play.</li>
       <li>You can drag the picture to look around. <b>Recentre</b> faces you back down the road.</li>
-      <li>Grey on the slider = no Street View there, so it skips that bit.</li>
+      <li>Grey on the slider = no Street View there, so it skips that bit. Orange marks = checkpoints.</li>
+      <li>The banner at the top shows the next manoeuvre and which lane. The small map follows you; tap it to make it bigger.</li>
+      <li>Checkpoints are added automatically at each junction with a tip. Use <b>📍 Pin here</b> to add your own (box junctions, tricky bits).</li>
+      <li>Routes are saved on this device only. <b>My routes → Export</b> makes a backup file you can import on your other device.</li>
     </ol>
     <h3>Google key</h3>
     <p class="small">Only needed if the app says it has no key. Paste it here and press Save.</p>

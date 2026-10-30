@@ -1,9 +1,10 @@
-// Route Rehearser, round 1: build a route, then step along it in Street View.
+// Route Rehearser: build a route, then step along it in Street View.
 
 import * as G from './google.js';
-import { buildGeom, project } from './geo.js';
+import { buildGeom, project, pointAt } from './geo.js';
 import { buildImageList, SETTINGS as IMG } from './imagery.js';
 import * as store from './store.js';
+import * as CP from './checkpoints.js';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -14,8 +15,12 @@ const dist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${km(m)} km`);
 const state = {
   map: null,
   pano: null,
-  route: null, // { id, name, from, to, vias, path, steps, metres, millis }
+  route: null, // { id, name, from, to, vias, path, steps, metres, millis, checkpoints }
   geom: null,
+  moves: [], // manoeuvres along the route, for the banner
+  mini: null,
+  miniLine: null,
+  editing: null, // checkpoint open in the pin dialog
   line: null,
   markers: [],
   addingVia: false,
@@ -49,7 +54,7 @@ function renderUsage() {
   $('usageStrip').textContent = show
     ? 'This month: ' +
       ['streetview', 'maps', 'routes']
-        .map((k) => `${METERS[k].short} ${(m[k] || 0).toLocaleString()}/${METERS[k].free.toLocaleString()}`)
+        .map((k) => `${METERS[k].short} ${(m[k] || 0).toLocaleString()}/${METERS[k].free / 1000}k`)
         .join(' · ')
     : '';
   $('usageTable').innerHTML = Object.entries(METERS)
@@ -87,7 +92,7 @@ async function recompute(base) {
   hint('Working out the route…');
   try {
     const r = await G.computeRoute(base);
-    setRoute({ ...base, ...r });
+    setRoute({ ...base, ...r }, true);
     hint('');
   } catch (err) {
     console.error(err);
@@ -105,17 +110,27 @@ async function recompute(base) {
   }
 }
 
-function setRoute(route) {
+// fresh = the line has just been worked out, so re-make the auto checkpoints.
+function setRoute(route, fresh = false) {
   state.route = route;
   state.geom = buildGeom(route.path);
+  state.moves = CP.manoeuvres(state.geom, route.steps);
+  if (fresh || !route.checkpoints) {
+    route.checkpoints = CP.mergeCheckpoints(state.geom, route.checkpoints, CP.seedCheckpoints(state.moves));
+    if (fresh) persist();
+  }
   state.imagery = null;
   drawRoute();
-  const mins = Math.round((route.millis || 0) / 60000);
-  $('routeSummary').textContent =
-    `${km(route.metres || state.geom.total)} km` + (mins ? ` · about ${mins} min` : '') +
-    (route.name ? ` · ${route.name}` : '');
+  updateSummary();
   $('routeInfo').hidden = false;
   renderVias();
+}
+
+function updateSummary() {
+  const r = state.route;
+  const mins = Math.round((r.millis || 0) / 60000);
+  $('routeSummary').textContent =
+    `${km(r.metres || state.geom.total)} km` + (mins ? ` · about ${mins} min` : '') + (r.name ? ` · ${r.name}` : '');
 }
 
 function drawRoute() {
@@ -167,15 +182,11 @@ function toggleAddVia(on = !state.addingVia) {
 
 // ---------- saving ----------
 
-function saveCurrent() {
-  const r = state.route;
-  if (!r) return;
-  const name = prompt('Name this route', r.name || `${r.from} → ${r.to}`);
-  if (name === null) return;
-  r.name = name.trim() || `${r.from} → ${r.to}`;
-  r.id ||= Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const newRouteId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function serialise(r) {
   const round = (p) => ({ lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6) });
-  const ok = store.saveRoute({
+  return {
     id: r.id,
     name: r.name,
     from: r.from,
@@ -185,9 +196,26 @@ function saveCurrent() {
     steps: r.steps,
     metres: r.metres,
     millis: r.millis,
-  });
+    checkpoints: r.checkpoints,
+  };
+}
+
+function saveCurrent() {
+  const r = state.route;
+  if (!r) return;
+  const name = prompt('Name this route', r.name || `${r.from} → ${r.to}`);
+  if (name === null) return;
+  r.name = name.trim() || `${r.from} → ${r.to}`;
+  r.id ||= newRouteId();
+  const ok = store.saveRoute(serialise(r));
   toast(ok ? `Saved "${r.name}"` : "Couldn't save – this browser's storage may be full or blocked.");
-  setRoute(r);
+  updateSummary();
+}
+
+// Quietly keeps an already-saved route up to date (e.g. after editing a pin).
+function persist() {
+  const r = state.route;
+  if (r?.id && store.getRoute(r.id)) store.saveRoute(serialise(r));
 }
 
 function renderRouteList() {
@@ -196,12 +224,56 @@ function renderRouteList() {
     ? list
         .map(
           (r) => `<li><b>${esc(r.name)}</b>
-            <span class="small">${esc(r.from)} → ${esc(r.to)} · ${km(r.metres)} km · ${new Date(r.savedAt).toLocaleDateString('en-GB')}</span>
+            <span class="small">${esc(r.from)} → ${esc(r.to)} · ${km(r.metres)} km ·
+              ${(r.checkpoints || []).filter((c) => !c.hidden).length} checkpoints ·
+              ${new Date(r.savedAt).toLocaleDateString('en-GB')}</span>
             <div class="row"><button type="button" class="primary" data-open="${esc(r.id)}">Open</button>
+            <button type="button" data-rename="${esc(r.id)}">Rename</button>
+            <button type="button" data-copy="${esc(r.id)}">Copy</button>
             <button type="button" data-del="${esc(r.id)}">Delete</button></div></li>`
         )
         .join('')
     : '<li class="small">No saved routes yet. Find a route, then press "Save route".</li>';
+}
+
+function libraryAction(e) {
+  const { open, rename, copy, del } = e.target.dataset || {};
+  if (open) return openSaved(open);
+  const id = rename || copy || del;
+  const r = id && store.getRoute(id);
+  if (!r) return;
+  if (rename) {
+    const name = prompt('New name', r.name);
+    if (!name?.trim()) return;
+    store.saveRoute({ ...r, name: name.trim() });
+    if (state.route?.id === id) (state.route.name = name.trim()), updateSummary();
+  }
+  if (copy) store.saveRoute({ ...structuredClone(r), id: newRouteId(), name: `${r.name} (copy)` });
+  if (del && confirm(`Delete "${r.name}"?`)) store.deleteRoute(id);
+  renderRouteList();
+}
+
+function exportRoutes() {
+  const data = store.exportAll();
+  if (!data.routes.length) return toast('No saved routes to export yet.');
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `route-rehearser-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast(`Exported ${data.routes.length} route${data.routes.length === 1 ? '' : 's'}.`);
+}
+
+async function importRoutes(file) {
+  try {
+    const res = store.importRoutes(JSON.parse(await file.text()));
+    if (!res.ok) throw new Error('storage');
+    toast(`Imported: ${res.added} new, ${res.updated} updated` + (res.skipped ? `, ${res.skipped} already up to date` : '') + '.', 5000);
+  } catch {
+    toast("That file couldn't be imported. Pick a Route Rehearser backup (.json).", 5000);
+  }
+  renderRouteList();
 }
 
 function openSaved(id) {
@@ -238,6 +310,7 @@ async function rehearse() {
     toast(err.message, 6000);
     return showView('plan');
   }
+  await setUpMiniMap();
   const key = routeKey(state.route);
   if (state.imagery?.key !== key) {
     $('loading').hidden = false;
@@ -269,6 +342,71 @@ function drawTrack() {
   $('track').innerHTML = state.imagery.gaps
     .map((g) => `<i style="left:${(100 * g.from) / total}%;width:${(100 * (g.to - g.from)) / total}%"></i>`)
     .join('');
+  drawTicks();
+}
+
+function drawTicks() {
+  const total = state.geom.total;
+  $('ticks').innerHTML = state.route.checkpoints
+    .filter((c) => !c.hidden)
+    .map((c) => `<b style="left:${(100 * c.d) / total}%"></b>`)
+    .join('');
+}
+
+async function setUpMiniMap() {
+  try {
+    state.mini ||= await G.createMiniMap($('miniMap'), window.RR_CONFIG?.mapId);
+  } catch {
+    $('miniWrap').hidden = true; // daily limit reached: carry on without it
+    return;
+  }
+  if (state.miniLine?.route !== state.route) {
+    state.miniLine?.setMap(null);
+    state.miniLine = new G.lib.Polyline({
+      map: state.mini,
+      path: state.route.path,
+      strokeColor: '#2a7de1',
+      strokeOpacity: 0.85,
+      strokeWeight: 7,
+      clickable: false,
+    });
+    state.miniLine.route = state.route;
+  }
+}
+
+const headingUp = () => !!window.RR_CONFIG?.mapId;
+
+function updateMiniMap(img) {
+  if (!state.mini) return;
+  state.mini.moveCamera({ center: { lat: img.lat, lng: img.lng }, heading: headingUp() ? img.heading : 0 });
+  $('miniCar').style.setProperty('--car', `${headingUp() ? 0 : img.heading}deg`);
+}
+
+function fmtAhead(m) {
+  if (m < 15) return 'Now';
+  if (m >= 1000) return `In ${(m / 1000).toFixed(1)} km`;
+  return `In ${m < 200 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m`;
+}
+
+function updateBanner(d) {
+  const b = CP.bannerAt(state.moves, d);
+  $('banner').hidden = !b;
+  if (!b) return;
+  $('bnIcon').textContent = CP.iconFor(b);
+  $('bnDist').textContent = fmtAhead(b.inMetres);
+  $('bnText').textContent = b.text;
+  $('bnLane').textContent = b.lane;
+}
+
+function updateCheckpointCard(d) {
+  const c = CP.checkpointNear(state.route.checkpoints, d);
+  $('cpCard').hidden = !c;
+  if (!c) return;
+  $('cpCard').dataset.id = c.id;
+  $('cpIcon').textContent = CP.PIN_TYPES[c.type]?.icon || '•';
+  $('cpTitle').textContent = c.title;
+  $('cpDist').textContent = c.d - d < 10 ? 'here' : `in ${Math.round((c.d - d) / 10) * 10} m`;
+  $('cpNote').textContent = c.note;
 }
 
 function monthName(ym) {
@@ -289,6 +427,9 @@ function show(i) {
   const date = monthName(img.date);
   $('imgDate').textContent = date ? `Image: ${date}` : '';
   $('posText').textContent = `${dist(img.d)} of ${dist(state.geom.total)}`;
+  updateBanner(img.d);
+  updateCheckpointCard(img.d);
+  updateMiniMap(img);
   $('scrub').value = Math.round(img.d);
   $('btnBack').disabled = i === 0;
   $('btnFwd').disabled = i === imgs.length - 1;
@@ -347,6 +488,82 @@ function scrubTo(d) {
   show(best);
 }
 
+// ---------- checkpoints and pins ----------
+
+function renderCheckpointList() {
+  const list = [...state.route.checkpoints].sort((a, b) => a.d - b.d);
+  $('cpList').innerHTML = list.length
+    ? list
+        .map(
+          (c) => `<li class="${c.hidden ? 'dim' : ''}"><b>${CP.PIN_TYPES[c.type]?.icon || '•'} ${esc(c.title)}</b>
+            <span class="tag">at ${dist(c.d)}${c.auto ? ' · auto' : ''}${c.hidden ? ' · hidden' : ''}</span>
+            <div class="row"><button type="button" class="primary" data-go="${c.id}">Go</button>
+            <button type="button" data-edit="${c.id}">Edit</button></div></li>`
+        )
+        .join('')
+    : '<li class="small">No checkpoints yet. Use "📍 Pin here" to add one.</li>';
+}
+
+function openPin(cp) {
+  stop();
+  state.editing = cp;
+  $('pinHeading').textContent = cp ? 'Edit checkpoint' : 'Pin here';
+  $('pinType').innerHTML = Object.entries(CP.PIN_TYPES)
+    .filter(([k]) => CP.OWN_TYPES.includes(k) || k === cp?.type)
+    .map(([k, v]) => `<option value="${k}">${v.icon} ${v.label}</option>`)
+    .join('');
+  $('pinType').value = cp?.type || 'tricky';
+  $('pinTitle').value = cp?.title || '';
+  $('pinNote').value = cp?.note || '';
+  $('pinHidden').checked = !!cp?.hidden;
+  $('pinDelete').hidden = !cp;
+  $('dlgPin').returnValue = '';
+  $('dlgPin').showModal();
+}
+
+function closePin() {
+  const action = $('dlgPin').returnValue;
+  const r = state.route;
+  const cp = state.editing;
+  state.editing = null;
+  if (action === 'delete' && cp) {
+    if (!confirm('Delete this checkpoint?')) return;
+    r.checkpoints = r.checkpoints.filter((c) => c !== cp);
+  } else if (action === 'save') {
+    const type = $('pinType').value;
+    const fields = {
+      type,
+      title: $('pinTitle').value.trim() || CP.PIN_TYPES[type].label,
+      note: $('pinNote').value.trim(),
+      hidden: $('pinHidden').checked,
+    };
+    if (cp) Object.assign(cp, fields);
+    else {
+      const d = state.imagery.images[state.idx].d;
+      const at = pointAt(state.geom, d);
+      if (!fields.note) fields.note = CP.tipFor(type);
+      r.checkpoints.push({ id: CP.newId(), d, lat: at.lat, lng: at.lng, auto: false, ...fields });
+      r.checkpoints.sort((a, b) => a.d - b.d);
+      if (!store.getRoute(r.id || '')) toast('Pin added. Press Save to keep this route and its pins.');
+    }
+  } else return;
+  persist();
+  if (state.imagery) {
+    drawTicks();
+    updateCheckpointCard(state.imagery.images[state.idx].d);
+  }
+  if ($('dlgCps').open) renderCheckpointList();
+}
+
+function checkpointAction(e) {
+  const { go, edit } = e.target.dataset || {};
+  const cp = state.route.checkpoints.find((c) => c.id === (go || edit));
+  if (!cp) return;
+  if (edit) return openPin(cp);
+  $('dlgCps').close();
+  scrubTo(Math.max(0, cp.d - 40)); // stop just before it, to see it coming
+}
+
 // ---------- start-up ----------
 
 function wire() {
@@ -368,14 +585,20 @@ function wire() {
   $('scrub').oninput = (e) => scrubTo(+e.target.value);
 
   $('btnRoutes').onclick = () => (renderRouteList(), $('dlgRoutes').showModal());
-  $('routeList').onclick = (e) => {
-    const { open, del } = e.target.dataset || {};
-    if (open) openSaved(open);
-    if (del && confirm('Delete this saved route?')) {
-      store.deleteRoute(del);
-      renderRouteList();
-    }
+  $('routeList').onclick = libraryAction;
+  $('btnExport').onclick = exportRoutes;
+  $('btnImport').onclick = () => $('importFile').click();
+  $('importFile').onchange = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) importRoutes(f);
   };
+  $('btnPin').onclick = () => state.imagery?.images.length && openPin(null);
+  $('btnCps').onclick = () => (stop(), renderCheckpointList(), $('dlgCps').showModal());
+  $('cpList').onclick = checkpointAction;
+  $('cpEdit').onclick = () => openPin(state.route.checkpoints.find((c) => c.id === $('cpCard').dataset.id));
+  $('dlgPin').addEventListener('close', closePin);
+  $('miniWrap').onclick = () => $('miniWrap').classList.toggle('big');
   $('btnUsage').onclick = () => (renderUsage(), $('dlgUsage').showModal());
   $('showUsage').checked = store.getSettings().showUsage;
   $('showUsage').onchange = (e) => (store.setSettings({ showUsage: e.target.checked }), renderUsage());
