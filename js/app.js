@@ -23,7 +23,7 @@ const state = {
   editing: null, // checkpoint open in the pin dialog
   line: null,
   markers: [],
-  addingVia: false,
+  tapMode: null, // 'via' | 'start' | 'end': what the next tap on the map sets
   imagery: null, // { key, images, gaps }
   idx: 0,
   playing: false,
@@ -85,6 +85,8 @@ async function findRoute(e) {
     from,
     to,
     vias: keep ? state.route.vias : [],
+    fromPoint: keep ? state.route.fromPoint : null,
+    toPoint: keep ? state.route.toPoint : null,
   });
 }
 
@@ -154,6 +156,13 @@ function drawRoute() {
     });
     return m;
   });
+  // Start / end spots tapped on the map (drag to adjust).
+  for (const [key, label] of [['fromPoint', 'A'], ['toPoint', 'B']]) {
+    if (!route[key]) continue;
+    const m = new G.lib.Marker({ map, position: route[key], label, draggable: true });
+    m.addListener('dragend', (e) => recompute({ ...state.route, [key]: { lat: e.latLng.lat(), lng: e.latLng.lng() } }));
+    state.markers.push(m);
+  }
   const b = new G.lib.LatLngBounds();
   route.path.forEach((p) => b.extend(p));
   map.fitBounds(b, 40);
@@ -174,10 +183,27 @@ function addVia(latLng) {
   recompute({ ...state.route, vias });
 }
 
-function toggleAddVia(on = !state.addingVia) {
-  state.addingVia = on;
-  $('btnAddVia').classList.toggle('on', on);
-  hint(on ? 'Tap the road you want the route to use' : '');
+const TAP_HINTS = {
+  via: 'Tap the road you want the route to use',
+  start: 'Tap exactly where you want to start',
+  end: 'Tap exactly where you want to finish',
+};
+
+function setTapMode(mode) {
+  state.tapMode = state.tapMode === mode ? null : mode;
+  $('btnAddVia').classList.toggle('on', state.tapMode === 'via');
+  $('btnSetStart').classList.toggle('on', state.tapMode === 'start');
+  $('btnSetEnd').classList.toggle('on', state.tapMode === 'end');
+  hint(TAP_HINTS[state.tapMode] || '');
+}
+
+function mapTapped(latLng) {
+  const mode = state.tapMode;
+  if (!mode || !state.route) return;
+  setTapMode(null);
+  if (mode === 'via') return addVia(latLng);
+  const p = { lat: latLng.lat(), lng: latLng.lng() };
+  recompute({ ...state.route, [mode === 'start' ? 'fromPoint' : 'toPoint']: p });
 }
 
 // ---------- saving ----------
@@ -192,6 +218,8 @@ function serialise(r) {
     from: r.from,
     to: r.to,
     vias: r.vias.map(round),
+    fromPoint: r.fromPoint ? round(r.fromPoint) : null,
+    toPoint: r.toPoint ? round(r.toPoint) : null,
     path: r.path.map(round),
     steps: r.steps,
     metres: r.metres,
@@ -302,7 +330,7 @@ function routeKey(r) {
 
 async function rehearse() {
   if (!state.route) return;
-  toggleAddVia(false);
+  setTapMode(null);
   showView('drive');
   try {
     state.pano ||= await G.getPanorama($('pano'));
@@ -378,7 +406,12 @@ const headingUp = () => !!window.RR_CONFIG?.mapId;
 
 function updateMiniMap(img) {
   if (!state.mini) return;
-  state.mini.moveCamera({ center: { lat: img.lat, lng: img.lng }, heading: headingUp() ? img.heading : 0 });
+  // With a vector Map ID: heading-up and tilted, like a car sat-nav.
+  state.mini.moveCamera(
+    headingUp()
+      ? { center: { lat: img.lat, lng: img.lng }, heading: img.heading, tilt: 45, zoom: 18 }
+      : { center: { lat: img.lat, lng: img.lng }, heading: 0 }
+  );
   $('miniCar').style.setProperty('--car', `${headingUp() ? 0 : img.heading}deg`);
 }
 
@@ -568,7 +601,9 @@ function checkpointAction(e) {
 
 function wire() {
   $('routeForm').addEventListener('submit', findRoute);
-  $('btnAddVia').onclick = () => toggleAddVia();
+  $('btnAddVia').onclick = () => setTapMode('via');
+  $('btnSetStart').onclick = () => setTapMode('start');
+  $('btnSetEnd').onclick = () => setTapMode('end');
   $('viaList').onclick = (e) => {
     const i = e.target.dataset?.i;
     if (i === undefined) return;
@@ -611,7 +646,9 @@ function wire() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if ($('drive').hidden || !state.imagery || e.target.matches('input, select')) return;
+    // Leave keys alone while typing or while a box (e.g. Pin here) is open.
+    if ($('drive').hidden || !state.imagery || e.target.matches('input, select, textarea')) return;
+    if (document.querySelector('dialog[open]')) return;
     if (e.key === 'ArrowRight') (stop(), step(1));
     else if (e.key === 'ArrowLeft') (stop(), step(-1));
     else if (e.key === ' ') (e.preventDefault(), play());
@@ -636,9 +673,7 @@ async function start() {
     await G.loadGoogle(key);
     state.map = await G.createMap($('map'));
     state.map.addListener('click', (e) => {
-      if (!state.addingVia || !state.route) return;
-      toggleAddVia(false);
-      addVia(e.latLng);
+      mapTapped(e.latLng);
     });
   } catch (err) {
     console.error(err);

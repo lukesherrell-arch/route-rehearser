@@ -21,7 +21,7 @@ export const PIN_TYPES = {
 export const OWN_TYPES = ['box', 'lane', 'hazard', 'tricky', 'roundabout', 'other'];
 
 const TIPS = {
-  roundabout: 'Mirrors, signal and get in lane early. Give way to traffic from your right.',
+  roundabout: 'Lane arrows and signs on the road take priority over this. Get in lane early and give way to traffic from your right.',
   left: 'Mirror, signal left, keep left and slow down. Check for cyclists on your left.',
   right: 'Mirror, signal right, position just left of the centre line. Wait for a safe gap; watch for people crossing.',
   keep: 'Read the lane signs early and move over in good time: mirror, signal, manoeuvre.',
@@ -62,12 +62,25 @@ function turn(a, b) {
   return ((b - a + 540) % 360) - 180;
 }
 
-// Lane advice, following the Highway Code's roundabout guidance.
-function laneHint(type, exitTurn) {
+// Lane advice, from the Highway Code's roundabout rules (rule 186):
+// - first exit / turning left: left lane, signal left as you approach;
+// - going ahead: usually left lane, no signal on approach, signal left
+//   after passing the exit before yours;
+// - turning right: right lane, signal right, then left after passing the
+//   exit before yours.
+// Which of these applies is worked out from the exit number Google gives
+// and how much the road turns between entering and leaving.
+export function exitNumber(text = '') {
+  const m = /\b(\d+)(st|nd|rd|th) exit/i.exec(text);
+  return m ? +m[1] : null;
+}
+
+function laneHint(type, exitTurn, exit) {
   if (type === 'roundabout') {
-    if (exitTurn < -45) return 'Left lane · signal left';
-    if (exitTurn > 45) return 'Right lane · signal right, then left after the exit before yours';
-    return 'Left lane (unless signs say otherwise) · signal left after the exit before yours';
+    if (exit === 1 || (exit == null && exitTurn < -45)) return 'Usually left lane · signal left as you approach';
+    const after = exit ? `after passing exit ${exit - 1}` : 'after passing the exit before yours';
+    if (exitTurn > 45) return `Usually right lane · signal right, then left ${after}`;
+    return `Usually left lane · no signal on approach, signal left ${after}`;
   }
   if (type === 'left') return 'Keep left';
   if (type === 'right') return 'Just left of the centre line';
@@ -97,7 +110,7 @@ export function manoeuvres(g, steps = []) {
       const after = at[i + 1] ?? Math.min(g.total, d + 60);
       exitTurn = turn(headingAt(g, Math.max(0, d - 25), 20), headingAt(g, after, 20));
     }
-    out.push({ d, type: type || 'straight', text, more: more.join(' · '), lane: type ? laneHint(type, exitTurn) : '' });
+    out.push({ d, type: type || 'straight', text, more: more.join(' · '), lane: type ? laneHint(type, exitTurn, exitNumber(text)) : '' });
   });
   out.push({ d: g.total, type: 'arrive', text: 'Arrive at your destination', lane: '' });
   return out;

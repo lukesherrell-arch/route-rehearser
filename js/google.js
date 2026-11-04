@@ -165,13 +165,15 @@ const ll = (p) => ({
 
 // Works out a driving route (one billable call). Via points make the route
 // pass through a spot without stopping there.
-export async function computeRoute({ from, to, vias }) {
+// fromPoint / toPoint, when set, are exact spots tapped on the map and are
+// used instead of the typed addresses.
+export async function computeRoute({ from, to, vias, fromPoint, toPoint }) {
   guard('routes');
   const { Route } = await google.maps.importLibrary('routes');
   count('routes');
   const req = {
-    origin: from,
-    destination: to,
+    origin: fromPoint || from,
+    destination: toPoint || to,
     travelMode: 'DRIVING',
     region: 'uk',
     language: 'en-GB',
