@@ -148,4 +148,10 @@ What turned out differently from the plan above:
 - **Route line:** Google's route polyline follows the centre of two-way roads, so the ribbon is shifted sideways to the track Google's camera car drove (`laneTrack` in `js/imagery.js`).
 - **Lane data:** Google doesn't expose lane guidance to websites. Lane hints are text from Highway Code rule 186 plus the exit number and measured exit direction.
 
-Agreed next: a "Lanes" round — OpenStreetMap `turn:lanes` where mapped, plus Luke's own lane picker on pins — to show sat-nav style lane arrows. Luke wants it as close as possible to Google's in-car sat-nav.
+Round 4 (10 Nov 2026) added the sat-nav panel and OpenStreetMap road details (`js/osm.js`). Luke uses the app mainly on his **PC**, not his phone, and wants the map side to look as close as possible to Google's in-car sat-nav. He does not want a manual lane picker.
+
+Not yet checked against live data: the cloud build session could not reach overpass-api.de, so `js/osm.js` is tested only against hand-made data in OpenStreetMap's format (`tests/osm.test.mjs`). First thing to confirm with Luke: Checkpoints → "Road details" shows non-zero counts on a real route, and the lane arrows / speed limits look right.
+
+Address suggestions need "Places API (New)" enabled and added to the key's API restrictions.
+
+Ideas still open: quiz mode, tricky-junction drill, moving Pages to the `main` branch, optional passcode screen.

@@ -39,7 +39,7 @@ export function deleteRoute(id) {
 }
 
 export function getSettings() {
-  return { apiKey: '', showUsage: true, showLine: true, ...read(SETTINGS, {}) };
+  return { apiKey: '', showUsage: true, showLine: true, imperial: true, navSide: true, ...read(SETTINGS, {}) };
 }
 
 export function setSettings(patch) {
@@ -71,4 +71,15 @@ export function importRoutes(data) {
   }
   const ok = write(ROUTES, all);
   return { ok, added, updated, skipped: incoming.length - added - updated };
+}
+
+// Where you last stopped on each saved route, so reopening carries on.
+const PLACES = 'rr.pos';
+
+export const getPos = (id) => read(PLACES, {})[id] ?? null;
+
+export function setPos(id, d) {
+  const all = read(PLACES, {});
+  all[id] = Math.round(d);
+  write(PLACES, all);
 }

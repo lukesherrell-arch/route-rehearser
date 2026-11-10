@@ -7,14 +7,15 @@ export const METERS = {
   streetview: { label: 'Street View loads', short: 'Street View', free: 5000, billed: true },
   maps: { label: 'Map loads', short: 'Maps', free: 10000, billed: true },
   routes: { label: 'Routes worked out', short: 'Routes', free: 10000, billed: true },
+  places: { label: 'Address suggestions', short: 'Suggestions', free: 10000, billed: true },
   metadata: { label: 'Image look-ups', free: null, billed: false },
 };
 
 // Google won't let us set daily caps on this account, so the app sets its own,
 // per device. Normal use is a handful a day; these only stop runaway use.
-export const DAILY_LIMIT = { streetview: 40, maps: 40, routes: 60 };
+export const DAILY_LIMIT = { streetview: 40, maps: 40, routes: 60, places: 300 };
 
-const session = { streetview: 0, maps: 0, routes: 0, metadata: 0, steps: 0 };
+const session = { streetview: 0, maps: 0, routes: 0, places: 0, metadata: 0, steps: 0 };
 const listeners = new Set();
 
 function month() {

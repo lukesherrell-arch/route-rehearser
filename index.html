@@ -25,8 +25,8 @@
     <!-- PLAN: build the route -->
     <section id="plan" class="view">
       <form id="routeForm" class="form">
-        <input id="from" placeholder="From, e.g. Newport railway station" autocomplete="off" required>
-        <input id="to" placeholder="To, e.g. Tesco Spytty" autocomplete="off" required>
+        <div class="field"><input id="from" placeholder="From, e.g. Newport railway station" autocomplete="off" required><ul class="suggest" hidden></ul></div>
+        <div class="field"><input id="to" placeholder="To, e.g. Tesco Spytty" autocomplete="off" required><ul class="suggest" hidden></ul></div>
         <button type="submit" class="primary">Find route</button>
       </form>
       <div class="mapwrap">
@@ -53,33 +53,42 @@
 
     <!-- DRIVE: step along the route in Street View -->
     <section id="drive" class="view" hidden>
-      <div class="panowrap">
-        <div id="pano"></div>
-        <canvas id="ribbon" class="ribbon"></canvas>
-        <div id="banner" class="banner" hidden>
-          <div id="bnIcon" class="bn-icon"></div>
-          <div class="bn-text">
-            <div id="bnDist" class="bn-dist"></div>
-            <div id="bnText" class="bn-instr"></div>
-            <div id="bnLane" class="bn-lane"></div>
+      <div class="stage">
+        <div class="panowrap">
+          <div id="pano"></div>
+          <canvas id="ribbon" class="ribbon"></canvas>
+          <div class="badge date"><span id="posText"></span><span id="imgDate"></span></div>
+          <button id="btnRecentre" type="button" class="recentre">Recentre</button>
+          <div id="cpCard" class="cpcard" hidden>
+            <div class="cp-head"><span id="cpIcon"></span> <b id="cpTitle"></b> <span id="cpDist" class="small"></span></div>
+            <div id="cpNote" class="cp-note"></div>
+            <div class="cp-more">Tap to read more</div>
+            <button id="cpEdit" type="button" class="link">Edit</button>
+          </div>
+          <div id="loading" class="loading" hidden>
+            <p>Finding Street View images along your route…</p>
+            <progress id="loadBar" max="1" value="0"></progress>
+            <small>These look-ups are free. It only does this once per route each visit.</small>
           </div>
         </div>
-        <div class="badge date"><span id="posText"></span><span id="imgDate"></span></div>
-        <button id="btnRecentre" type="button" class="recentre">Recentre</button>
-        <div id="cpCard" class="cpcard" hidden>
-          <div class="cp-head"><span id="cpIcon"></span> <b id="cpTitle"></b> <span id="cpDist" class="small"></span></div>
-          <div id="cpNote" class="cp-note"></div>
-          <div class="cp-more">Tap to read more</div>
-          <button id="cpEdit" type="button" class="link">Edit</button>
-        </div>
-        <div id="miniWrap" class="mini" title="Tap to make bigger">
-          <div id="miniMap"></div>
-          <div id="miniCar" class="car">▲</div>
-        </div>
-        <div id="loading" class="loading" hidden>
-          <p>Finding Street View images along your route…</p>
-          <progress id="loadBar" max="1" value="0"></progress>
-          <small>These look-ups are free. It only does this once per route each visit.</small>
+        <!-- Sat-nav: a panel beside the picture on a wide screen, small overlays on a phone -->
+        <div id="nav" class="nav">
+          <div id="banner" class="banner" hidden>
+            <div id="bnIcon" class="bn-icon"></div>
+            <div class="bn-text">
+              <div id="bnDist" class="bn-dist"></div>
+              <div id="bnText" class="bn-instr"></div>
+              <div id="bnLane" class="bn-lane"></div>
+            </div>
+            <div id="laneStrip" class="lanes" hidden></div>
+            <div id="spotChip" class="spot" hidden></div>
+          </div>
+          <div id="miniWrap" class="mini" title="Tap to change size">
+            <div id="miniMap"></div>
+            <div id="toGo" class="togo"></div>
+            <button id="btnNavSize" type="button" class="navsize" title="Make the sat-nav small" aria-label="Make the sat-nav small">⤡</button>
+          </div>
+          <div id="speedSign" class="speed" title="Speed limit (from OpenStreetMap)" hidden></div>
         </div>
       </div>
       <div class="controls">
@@ -125,6 +134,10 @@
     <h2>Checkpoints</h2>
     <p class="small">Tap one to go just before it. Ones marked "auto" came from the directions; you can edit, hide or delete any of them.</p>
     <ul id="cpList" class="list"></ul>
+    <h3>Road details</h3>
+    <p id="osmStatus" class="small"></p>
+    <button id="btnRefresh" type="button">Refresh tips and road details</button>
+    <p class="small">Use this after an app update to get the newest advice. Your own pins are kept; edits to "auto" ones are reset.</p>
     <form method="dialog"><button>Close</button></form>
   </dialog>
 
@@ -166,11 +179,15 @@
       <li>The blue <b>line on the road</b> shows where the route goes. It assumes flat ground, so it can drift a bit on hills. Turn it off with <b>Line</b>.</li>
       <li>You can drag the picture to look around. <b>Recentre</b> faces you back down the road.</li>
       <li>Grey on the slider = no Street View there, so it skips that bit. Orange marks = checkpoints.</li>
-      <li>The banner at the top shows the next manoeuvre and which lane. The small map follows you; tap it to make it bigger.</li>
+      <li>The green banner shows the next manoeuvre and which lane. The map follows you like a sat-nav.</li>
       <li>Checkpoints are added automatically at each junction with a tip. Use <b>📍 Pin here</b> to add your own (box junctions, tricky bits).</li>
-      <li>Routes are saved on this device only. <b>My routes → Export</b> makes a backup file you can import on your other device.</li>
+      <li>Routes are saved on this device only. <b>Routes → Export</b> makes a backup file you can import on your other device.</li>
+      <li>On a wide screen the <b>sat-nav</b> sits beside the picture. ⤡ makes it small; click the small map to bring it back.</li>
+      <li><b>Lane arrows, speed limits, lights and crossings</b> come from OpenStreetMap, a free volunteer-made map. Some roads have them and some don't, and they can be out of date, so always go by the real signs and markings.</li>
     </ol>
+    <label class="check"><input id="useImperial" type="checkbox"> Show distances in miles and yards</label>
     <p id="version" class="small"></p>
+    <p class="small">Road details © OpenStreetMap contributors.</p>
     <h3>Google key</h3>
     <p class="small">Only needed if the app says it has no key. Paste it here and press Save.</p>
     <input id="apiKey" placeholder="Paste API key" autocomplete="off">

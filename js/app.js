@@ -6,14 +6,15 @@ import { buildImageList, laneTrack, SETTINGS as IMG } from './imagery.js';
 import * as store from './store.js';
 import * as CP from './checkpoints.js';
 import { ribbon } from './overlay.js';
+import * as OSM from './osm.js';
+import * as U from './units.js';
 
-const VERSION = 'Round 3 · 10 Nov 2026';
+const VERSION = 'Round 4 (sat-nav) · 10 Nov 2026';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const km = (m) => (m / 1000).toFixed(m < 10000 ? 1 : 0);
-const dist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${km(m)} km`);
+const dist = (m) => U.dist(m);
 
 const state = {
   map: null,
@@ -124,6 +125,7 @@ function setRoute(route, fresh = false) {
     route.checkpoints = CP.mergeCheckpoints(state.geom, route.checkpoints, CP.seedCheckpoints(state.moves));
     if (fresh) persist();
   }
+  if (fresh) route.osm = null; // road details belong to the old line
   state.imagery = null;
   drawRoute();
   updateSummary();
@@ -135,7 +137,7 @@ function updateSummary() {
   const r = state.route;
   const mins = Math.round((r.millis || 0) / 60000);
   $('routeSummary').textContent =
-    `${km(r.metres || state.geom.total)} km` + (mins ? ` · about ${mins} min` : '') + (r.name ? ` · ${r.name}` : '');
+    dist(r.metres || state.geom.total) + (mins ? ` · about ${mins} min` : '') + (r.name ? ` · ${r.name}` : '');
 }
 
 function drawRoute() {
@@ -209,6 +211,49 @@ function mapTapped(latLng) {
   recompute({ ...state.route, [mode === 'start' ? 'fromPoint' : 'toPoint']: p });
 }
 
+// ---------- address suggestions ----------
+
+function wireSuggestions(input) {
+  const list = input.parentElement.querySelector('.suggest');
+  let timer;
+  let latest = 0;
+  const close = () => ((list.hidden = true), (list.innerHTML = ''));
+  const pick = (li) => {
+    input.value = li.textContent;
+    close();
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const text = input.value.trim();
+    if (text.length < 3 || !state.map) return close();
+    // Wait for a pause in typing, so each word isn't a separate request.
+    timer = setTimeout(async () => {
+      const id = ++latest;
+      const c = state.map.getCenter?.();
+      const found = await G.suggest(text, c ? { lat: c.lat(), lng: c.lng() } : null);
+      if (id !== latest || document.activeElement !== input) return;
+      list.innerHTML = found.map((t) => `<li>${esc(t)}</li>`).join('');
+      list.hidden = !found.length;
+    }, 450);
+  });
+  input.addEventListener('keydown', (e) => {
+    const items = [...list.children];
+    if (list.hidden || !items.length) return;
+    const at = items.findIndex((li) => li.classList.contains('on'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[at]?.classList.remove('on');
+      items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length + (at < 0 && e.key === 'ArrowUp' ? 1 : 0)) % items.length].classList.add('on');
+    } else if (e.key === 'Enter' && at >= 0) {
+      e.preventDefault(); // choose the suggestion rather than sending the form
+      pick(items[at]);
+    } else if (e.key === 'Escape') close();
+  });
+  // mousedown fires before the box loses focus, so the click isn't lost.
+  list.addEventListener('mousedown', (e) => e.target.tagName === 'LI' && (e.preventDefault(), pick(e.target)));
+  input.addEventListener('blur', () => setTimeout(close, 150));
+}
+
 // ---------- saving ----------
 
 const newRouteId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -228,6 +273,7 @@ function serialise(r) {
     metres: r.metres,
     millis: r.millis,
     checkpoints: r.checkpoints,
+    osm: r.osm || null,
   };
 }
 
@@ -255,7 +301,7 @@ function renderRouteList() {
     ? list
         .map(
           (r) => `<li><b>${esc(r.name)}</b>
-            <span class="small">${esc(r.from)} → ${esc(r.to)} · ${km(r.metres)} km ·
+            <span class="small">${esc(r.from)} → ${esc(r.to)} · ${dist(r.metres)} ·
               ${(r.checkpoints || []).filter((c) => !c.hidden).length} checkpoints ·
               ${new Date(r.savedAt).toLocaleDateString('en-GB')}</span>
             <div class="row"><button type="button" class="primary" data-open="${esc(r.id)}">Open</button>
@@ -335,6 +381,7 @@ async function rehearse() {
   if (!state.route) return;
   setTapMode(null);
   showView('drive');
+  applyNavLayout();
   try {
     if (!state.pano) {
       state.pano = await G.getPanorama($('pano'));
@@ -359,7 +406,14 @@ async function rehearse() {
     state.imagery = { key, ...res, sideAt: laneTrack(res.images) };
     state.idx = 0;
     drawTrack();
+    // Carry on from where this saved route was left last time.
+    const left = state.route.id ? store.getPos(state.route.id) : null;
+    if (left > 30 && left < state.geom.total - 30 && res.images.length) {
+      state.idx = nearestIndex(left);
+      toast('Carried on from where you stopped. Drag the slider left to start again.', 5000);
+    }
   }
+  loadRoadData(); // in the background; the banner updates when it arrives
   if (!state.imagery.images.length) {
     toast('No Street View images found along this route.', 6000);
     return;
@@ -400,44 +454,154 @@ async function setUpMiniMap() {
     state.miniLine = new G.lib.Polyline({
       map: state.mini,
       path: state.route.path,
-      strokeColor: '#2a7de1',
-      strokeOpacity: 0.85,
-      strokeWeight: 7,
+      strokeColor: '#1a73e8',
+      strokeOpacity: 0.9,
+      strokeWeight: 9,
       clickable: false,
     });
     state.miniLine.route = state.route;
   }
+  state.puck ||= new G.lib.Marker({ map: state.mini, clickable: false, zIndex: 9 });
 }
 
 // Heading-up only when the map really is a vector map: a device without 3D
 // graphics falls back to a flat north-up map, and then the arrow turns instead.
 const headingUp = () => state.mini?.getRenderingType?.() === 'VECTOR';
 
-function updateMiniMap(img) {
-  if (!state.mini) return;
-  // With a vector Map ID: heading-up and tilted, like a car sat-nav.
-  state.mini.moveCamera(
-    headingUp()
-      ? { center: { lat: img.lat, lng: img.lng }, heading: img.heading, tilt: 45, zoom: 18 }
-      : { center: { lat: img.lat, lng: img.lng }, heading: 0 }
-  );
-  $('miniCar').style.setProperty('--car', `${headingUp() ? 0 : img.heading}deg`);
+// A point some metres further on in a given direction.
+function ahead(p, heading, metres) {
+  const h = (heading * Math.PI) / 180;
+  return {
+    lat: p.lat + (metres * Math.cos(h)) / 110574,
+    lng: p.lng + (metres * Math.sin(h)) / (111320 * Math.cos((p.lat * Math.PI) / 180)),
+  };
 }
 
-function fmtAhead(m) {
-  if (m < 15) return 'Now';
-  if (m >= 1000) return `In ${(m / 1000).toFixed(1)} km`;
-  return `In ${m < 200 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m`;
+function updateMiniMap(img) {
+  if (!state.mini) return;
+  const big = isSide() || $('miniWrap').classList.contains('big');
+  const up = headingUp();
+  // Like a car sat-nav: turned to face the way we're going, tilted, and
+  // looking a little ahead so our arrow sits in the lower part of the map.
+  state.mini.moveCamera(
+    up
+      ? { center: ahead(img, img.heading, big ? 45 : 20), heading: img.heading, tilt: big ? 58 : 45, zoom: big ? 18.5 : 18 }
+      : { center: { lat: img.lat, lng: img.lng }, heading: 0, zoom: 17 }
+  );
+  state.puck.setPosition({ lat: img.lat, lng: img.lng });
+  state.puck.setIcon({
+    path: 'M 0,-12 L 9,9 L 0,4 L -9,9 Z', // navigation arrow
+    fillColor: '#1a73e8',
+    fillOpacity: 1,
+    strokeColor: '#fff',
+    strokeWeight: 2.5,
+    scale: big ? 1.6 : 1.1,
+    rotation: up ? 0 : img.heading,
+  });
 }
+
+// ---------- sat-nav panel ----------
+
+const wide = window.matchMedia('(min-width: 900px)');
+const isSide = () => wide.matches && store.getSettings().navSide;
+
+function applyNavLayout() {
+  $('drive').classList.toggle('side', isSide());
+  $('miniWrap').classList.remove('big');
+  // Let Street View and the map notice their new size.
+  requestAnimationFrame(() => {
+    window.dispatchEvent(new Event('resize'));
+    if (state.imagery?.images.length && !$('drive').hidden) updateMiniMap(state.imagery.images[state.idx]);
+  });
+}
+
+function miniClicked(e) {
+  if (e.target.id === 'btnNavSize') return;
+  if (wide.matches && !isSide()) {
+    store.setSettings({ navSide: true });
+    return applyNavLayout();
+  }
+  if (isSide()) return;
+  $('miniWrap').classList.toggle('big');
+  if (state.imagery?.images.length) updateMiniMap(state.imagery.images[state.idx]);
+}
+
+const ARROWS = {
+  left: '↰', slight_left: '↖', sharp_left: '↲', through: '↑', none: '↑',
+  right: '↱', slight_right: '↗', sharp_right: '↳', merge_to_left: '↖', merge_to_right: '↗', reverse: '↶',
+};
 
 function updateBanner(d) {
   const b = CP.bannerAt(state.moves, d);
   $('banner').hidden = !b;
   if (!b) return;
+  const osm = state.route.osm;
   $('bnIcon').textContent = CP.iconFor(b);
-  $('bnDist').textContent = fmtAhead(b.inMetres);
+  const dist = U.ahead(b.inMetres);
+  $('bnDist').textContent = dist === 'Now' ? dist : `In ${dist}`;
   $('bnText').textContent = b.text;
-  $('bnLane').textContent = b.lane;
+
+  // Lane arrows from OpenStreetMap, where that road has them.
+  const lanes = OSM.lanesAt(osm, d);
+  $('laneStrip').hidden = !lanes;
+  if (lanes) {
+    $('laneStrip').innerHTML = lanes.lanes
+      .map((l, i) => `<span class="${lanes.use[i] ? 'use' : ''}">${l.map((t) => ARROWS[t] || '↑').join('')}</span>`)
+      .join('');
+  }
+  // With real lane arrows showing, drop the general "usually left lane" guess.
+  const exact = lanes?.use.some(Boolean);
+  $('bnLane').textContent = exact ? b.lane.replace(/^Usually (left|right) lane( \(.*?\))? · /, '') : b.lane;
+
+  const spot = OSM.nextSpot(osm, d);
+  $('spotChip').hidden = !spot;
+  if (spot) {
+    const away = U.ahead(Math.max(0, spot.d - d));
+    $('spotChip').textContent = `${spot.icon} ${spot.label} ${away === 'Now' ? 'here' : `in ${away}`}`;
+  }
+
+  const mph = OSM.limitAt(osm, d);
+  $('speedSign').hidden = !mph;
+  $('speedSign').textContent = mph || '';
+  $('toGo').textContent = `${U.dist(Math.max(0, state.geom.total - d))} to go`;
+}
+
+// Fetches lanes, speed limits and signals for the route from OpenStreetMap
+// (free, no key). Kept with the route, so it's only fetched once.
+const OSM_VERSION = 1;
+
+async function loadRoadData(force = false) {
+  const route = state.route;
+  if (!force && route.osm?.v === OSM_VERSION) return;
+  if (route.osmLoading) return;
+  route.osmLoading = true;
+  try {
+    const elements = await OSM.fetchRoadData(route.path);
+    route.osm = { v: OSM_VERSION, at: Date.now(), ...OSM.analyse(buildGeom(route.path), elements, CP.manoeuvres(buildGeom(route.path), route.steps)) };
+    if (route === state.route) {
+      persist();
+      if (state.imagery?.images.length) updateBanner(state.imagery.images[state.idx].d);
+    }
+  } catch (err) {
+    console.warn('Road details not loaded:', err.message);
+    route.osmFailed = true;
+  } finally {
+    route.osmLoading = false;
+    if ($('dlgCps').open) renderRoadStatus();
+  }
+}
+
+function renderRoadStatus() {
+  const r = state.route;
+  const o = r.osm;
+  $('osmStatus').textContent = r.osmLoading
+    ? 'Fetching road details from OpenStreetMap…'
+    : o
+    ? `Found on OpenStreetMap for this route — stretches with lane arrows: ${o.lanes.length} · ` +
+      `speed-limit stretches: ${o.limits.length} · lights, crossings and signs: ${o.spots.length}.`
+    : r.osmFailed
+    ? "Couldn't reach OpenStreetMap just now. Lane arrows and speed limits are off; everything else works."
+    : 'Not fetched yet.';
 }
 
 function updateCheckpointCard(d) {
@@ -448,7 +612,7 @@ function updateCheckpointCard(d) {
   $('cpCard').dataset.id = c.id;
   $('cpIcon').textContent = CP.PIN_TYPES[c.type]?.icon || '•';
   $('cpTitle').textContent = c.title;
-  $('cpDist').textContent = c.d - d < 10 ? 'here' : `in ${Math.round((c.d - d) / 10) * 10} m`;
+  $('cpDist').textContent = c.d - d < 10 ? 'here' : `in ${U.ahead(c.d - d)}`;
   $('cpNote').textContent = c.note;
 }
 
@@ -468,7 +632,10 @@ function show(i) {
   facePath();
   count('steps');
   const date = monthName(img.date);
-  $('imgDate').textContent = date ? `Image: ${date}` : '';
+  const years = img.date ? (Date.now() - new Date(`${img.date}-01`).getTime()) / 3.156e10 : 0;
+  $('imgDate').textContent = date ? `Image: ${date}` + (years >= 4 ? ' – old picture, the road may have changed' : '') : '';
+  $('imgDate').classList.toggle('old', years >= 4);
+  if (state.route.id) store.setPos(state.route.id, img.d);
   $('posText').textContent = `${dist(img.d)} of ${dist(state.geom.total)}`;
   // Hide the line for a moment while the new picture arrives, then fade it in.
   $('ribbon').classList.add('fade');
@@ -716,6 +883,22 @@ function closePin() {
   if ($('dlgCps').open) renderCheckpointList();
 }
 
+// Re-makes the automatic checkpoints with the app's newest advice and
+// fetches the road details again. Own pins are kept.
+function refreshTips() {
+  const r = state.route;
+  if (!confirm('Refresh the automatic tips and road details? Your own pins are kept; edits to "auto" checkpoints are reset.')) return;
+  r.checkpoints = CP.mergeCheckpoints(state.geom, r.checkpoints, CP.seedCheckpoints(state.moves));
+  persist();
+  renderCheckpointList();
+  if (state.imagery) {
+    drawTicks();
+    show(state.idx);
+  }
+  loadRoadData(true);
+  renderRoadStatus();
+}
+
 function checkpointAction(e) {
   const { go, edit } = e.target.dataset || {};
   const cp = state.route.checkpoints.find((c) => c.id === (go || edit));
@@ -763,12 +946,24 @@ function wire() {
     if (f) importRoutes(f);
   };
   $('btnPin').onclick = () => state.imagery?.images.length && openPin(null);
-  $('btnCps').onclick = () => (stop(), renderCheckpointList(), $('dlgCps').showModal());
+  $('btnCps').onclick = () => (stop(), renderCheckpointList(), renderRoadStatus(), $('dlgCps').showModal());
   $('cpList').onclick = checkpointAction;
   $('cpCard').onclick = (e) => e.target.id !== 'cpEdit' && $('cpCard').classList.toggle('open');
   $('cpEdit').onclick = () => openPin(state.route.checkpoints.find((c) => c.id === $('cpCard').dataset.id));
   $('dlgPin').addEventListener('close', closePin);
-  $('miniWrap').onclick = () => $('miniWrap').classList.toggle('big');
+  $('miniWrap').onclick = miniClicked;
+  $('btnNavSize').onclick = () => (store.setSettings({ navSide: false }), applyNavLayout());
+  wide.addEventListener('change', applyNavLayout);
+  $('btnRefresh').onclick = refreshTips;
+  $('useImperial').checked = store.getSettings().imperial;
+  $('useImperial').onchange = (e) => {
+    store.setSettings({ imperial: e.target.checked });
+    U.setImperial(e.target.checked);
+    if (state.route) updateSummary();
+    if (state.imagery?.images.length && !$('drive').hidden) show(state.idx);
+  };
+  wireSuggestions($('from'));
+  wireSuggestions($('to'));
   $('btnUsage').onclick = () => (renderUsage(), $('dlgUsage').showModal());
   $('showUsage').checked = store.getSettings().showUsage;
   $('showUsage').onchange = (e) => (store.setSettings({ showUsage: e.target.checked }), renderUsage());
@@ -796,6 +991,7 @@ function wire() {
 }
 
 async function start() {
+  U.setImperial(store.getSettings().imperial);
   wire();
   const key = store.getSettings().apiKey || window.RR_CONFIG?.apiKey;
   if (!key) {

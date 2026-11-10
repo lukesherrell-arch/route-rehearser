@@ -205,3 +205,29 @@ export async function computeRoute({ from, to, vias, fromPoint, toPoint }) {
     millis: r.durationMillis || 0,
   };
 }
+
+// Address suggestions while typing (Places API). Each request counts towards
+// a free monthly allowance, so the app waits for a pause in typing first.
+// If the Places API isn't switched on for the key, this quietly turns
+// itself off and plain typing carries on working.
+let placesOff = false;
+
+export async function suggest(input, near) {
+  if (placesOff) return [];
+  try {
+    guard('places');
+    const { AutocompleteSuggestion } = await google.maps.importLibrary('places');
+    const req = { input, includedRegionCodes: ['gb'], language: 'en-GB', region: 'gb' };
+    if (near) req.locationBias = { center: near, radius: 30000 };
+    count('places');
+    const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
+    return suggestions
+      .map((s) => s.placePrediction?.text?.toString())
+      .filter(Boolean)
+      .slice(0, 5);
+  } catch (err) {
+    console.warn('Address suggestions turned off:', err.message);
+    placesOff = true;
+    return [];
+  }
+}

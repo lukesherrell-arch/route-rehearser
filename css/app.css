@@ -74,7 +74,10 @@ main { flex: 1; min-height: 0; display: flex; }
 .vias li { background: var(--bg); border: 1px solid var(--line); border-radius: 20px; padding: 2px 4px 2px 10px; font-size: 14px; display: flex; align-items: center; gap: 4px; }
 .vias li button { min-height: 28px; padding: 0 8px; border-radius: 14px; }
 
-.panowrap { position: relative; flex: 1; min-height: 0; background: #000; }
+.stage { position: relative; flex: 1; min-height: 0; background: #000; }
+.panowrap { position: absolute; inset: 0; background: #000; }
+/* On a phone the sat-nav parts float over the picture. */
+.nav { display: contents; }
 #pano { position: absolute; inset: 0; }
 .ribbon { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; transition: opacity .25s; }
 .ribbon.fade { opacity: 0; transition: none; }
@@ -85,26 +88,45 @@ main { flex: 1; min-height: 0; display: flex; }
 .badge:empty { display: none; }
 .date { left: 8px; bottom: 4px; }
 .date span + span:not(:empty)::before { content: ' · '; }
-.recentre { position: absolute; z-index: 2; right: 8px; bottom: 156px; min-height: 36px; background: rgba(255,255,255,.9); }
+.recentre { position: absolute; z-index: 2; right: 8px; bottom: 186px; min-height: 36px; background: rgba(255,255,255,.9); }
 
 /* Sat-nav banner */
 .banner {
   position: absolute; z-index: 2; left: 8px; right: 8px; top: 8px;
-  display: flex; gap: 12px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center;
   background: rgba(20, 90, 50, .92); color: #fff; border-radius: 12px; padding: 8px 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,.35);
 }
 .banner[hidden] { display: none; }
 .bn-icon { font-size: 38px; line-height: 1; width: 44px; text-align: center; }
-.bn-text { min-width: 0; }
+.bn-text { min-width: 0; flex: 1; }
 .bn-dist { font-size: 22px; font-weight: 700; line-height: 1.1; }
 .bn-instr { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bn-lane { font-size: 13px; color: #c9f2d6; }
 .bn-lane:empty { display: none; }
 
+/* Lane arrows: the lanes to use are bright, the others dim. */
+.lanes { flex-basis: 100%; display: flex; justify-content: center; gap: 3px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,.25); }
+.lanes[hidden], .spot[hidden], .speed[hidden] { display: none; }
+.lanes span {
+  min-width: 34px; padding: 2px 6px; text-align: center; font-size: 22px; line-height: 1.2; white-space: nowrap;
+  border-left: 2px dashed rgba(255,255,255,.35); color: rgba(255,255,255,.35);
+}
+.lanes span:first-child { border-left: 0; }
+.lanes span.use { color: #fff; background: rgba(255,255,255,.18); border-radius: 6px; font-weight: 700; }
+.spot { flex-basis: 100%; font-size: 14px; padding-top: 3px; border-top: 1px solid rgba(255,255,255,.25); }
+
+/* UK speed limit sign */
+.speed {
+  position: absolute; z-index: 3; right: 172px; bottom: 30px; width: 52px; height: 52px; border-radius: 50%;
+  background: #fff; border: 6px solid #d01c1f; color: #111; font-weight: 800; font-size: 20px;
+  display: grid; place-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+.togo, .navsize { display: none; }
+
 /* Checkpoint card */
 .cpcard {
-  position: absolute; z-index: 2; left: 8px; bottom: 26px; right: 136px; max-width: 420px;
+  position: absolute; z-index: 2; left: 8px; bottom: 26px; right: 236px; max-width: 420px;
   background: rgba(255, 248, 230, .96); color: #3b2a00; border-left: 5px solid #f08c00;
   border-radius: 10px; padding: 8px 10px; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.3);
 }
@@ -122,15 +144,58 @@ button.link { background: none; border: 0; color: var(--accent); min-height: 0; 
 
 /* Mini-map */
 .mini {
-  position: absolute; z-index: 2; right: 8px; bottom: 26px; width: 120px; height: 120px;
+  position: absolute; z-index: 2; right: 8px; bottom: 26px; width: 150px; height: 150px;
   border-radius: 50%; overflow: hidden; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4);
   background: #e5e3df; cursor: pointer; transition: width .2s, height .2s, border-radius .2s;
 }
 .mini.big { width: min(70vw, 360px); height: min(45vh, 360px); border-radius: 14px; }
 #miniMap { position: absolute; inset: 0; }
-.car {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--car, 0deg));
-  color: #2a7de1; font-size: 22px; text-shadow: 0 0 3px #fff, 0 0 3px #fff; pointer-events: none;
+
+/* Wide screen: the sat-nav is a panel beside the picture, like a sat-nav
+   on the dashboard next to the windscreen. */
+#drive.side .stage { display: flex; }
+#drive.side .panowrap { position: relative; inset: auto; flex: 1; min-width: 0; }
+#drive.side .nav { display: flex; flex-direction: column; position: relative; width: clamp(340px, 36%, 560px); background: #10271a; }
+#drive.side .banner { position: static; border-radius: 0; padding: 12px 16px; box-shadow: none; background: #145a32; }
+#drive.side .bn-icon { font-size: 52px; width: 60px; }
+#drive.side .bn-dist { font-size: 30px; }
+#drive.side .bn-instr { font-size: 17px; -webkit-line-clamp: 3; }
+#drive.side .bn-lane { font-size: 14px; }
+#drive.side .lanes span { font-size: 30px; min-width: 46px; }
+#drive.side .mini { position: relative; inset: auto; flex: 1; width: auto; height: auto; border: 0; border-radius: 0; cursor: default; box-shadow: none; }
+#drive.side .speed { right: auto; left: 14px; bottom: 34px; width: 64px; height: 64px; font-size: 25px; border-width: 7px; }
+#drive.side .togo {
+  display: block; position: absolute; z-index: 2; right: 12px; bottom: 30px; background: #fff; color: #111;
+  padding: 6px 12px; border-radius: 18px; font-weight: 600; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,.35);
+}
+#drive.side .togo:empty { display: none; }
+#drive.side .navsize { display: block; position: absolute; z-index: 2; right: 10px; top: 10px; min-height: 34px; padding: 2px 10px; background: rgba(255,255,255,.92); }
+#drive.side .cpcard { right: auto; width: min(420px, calc(100% - 16px)); }
+#drive.side .recentre { bottom: 30px; }
+
+/* Address suggestions */
+.field { position: relative; }
+.suggest {
+  position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px; list-style: none;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.2);
+}
+.suggest[hidden] { display: none; }
+.suggest li { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 15px; }
+.suggest li:hover, .suggest li.on { background: #e3efff; }
+.old { color: #ffd27a; }
+
+/* Phone held sideways: keep the controls slim so the road gets the space. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .strip { display: none; }
+  .top { padding: 2px 10px; }
+  .top nav button { min-height: 30px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 10px; padding: 2px 8px; }
+  .scrub { order: -1; flex-basis: 100%; height: 24px; }
+  .track { top: 8px; } .ticks { top: 4px; }
+  .tools, .buttons { margin: 0; }
+  .tools button, .buttons button, .buttons select { min-height: 34px; }
+  .mini { width: 110px; height: 110px; }
+  .speed { right: 128px; }
 }
 .toast {
   position: fixed; z-index: 10; left: 50%; top: 38%; transform: translateX(-50%);
