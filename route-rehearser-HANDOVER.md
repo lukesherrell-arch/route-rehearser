@@ -134,3 +134,18 @@ A personal web app for Luke, a UK learner driver (Newport, Wales; UK roads, driv
 
 - DVSA doesn't publish test routes; commercial apps sell community-made ones. Luke mainly wants his own local A→B routes and the spots he finds hard.
 - Previous Claude builds of Luke's (e.g. MouthBox) went well when published in small rounds with plain-language on-screen help.
+
+## Status (updated 10 Nov 2026)
+
+Rounds 1–3 are built and live at https://lukesherrell-arch.github.io/route-rehearser/ (GitHub Pages serves the `claude/dazzling-albattani-pql92v` branch, root folder). See `README.md` for what each round added and the file layout.
+
+What turned out differently from the plan above:
+- **Routes:** the legacy Directions API isn't available to new projects. The app uses the Maps JS `routes` library (`Route.computeRoutes`, Routes API) with pass-through via points. No Geocoding API: addresses go straight into the route request. "Move start / Move end" set exact tapped points.
+- **Daily quota caps:** Google shows every quota as "Adjustable: No" on Luke's account (free trial), so the caps are in the app instead (`DAILY_LIMIT` in `js/usage.js`, per device). Budget alert of £1 is set (alerts only; spend caps aren't offered for Maps).
+- **API key:** restricted to `https://lukesherrell-arch.github.io/*` and `…/route-rehearser/*` (Routes requests only send the bare origin as referrer), and to Maps JavaScript API + Routes API. Key and vector Map ID live in `js/config.js`.
+- **Billing check passed (31 Oct 2026):** Billing → Reports by SKU showed Dynamic Street View = 3 for three Rehearse sessions with ~145 steps and 1,000+ metadata look-ups. One panorama per page visit, moved with `setPano`, is not billed per step.
+- **Street View field of view (measured):** horizontal angle is `2·atan(2^(1−zoom))`, but the vertical angle is capped at 90° (matters in portrait). See `focal()` in `js/overlay.js`.
+- **Route line:** Google's route polyline follows the centre of two-way roads, so the ribbon is shifted sideways to the track Google's camera car drove (`laneTrack` in `js/imagery.js`).
+- **Lane data:** Google doesn't expose lane guidance to websites. Lane hints are text from Highway Code rule 186 plus the exit number and measured exit direction.
+
+Agreed next: a "Lanes" round — OpenStreetMap `turn:lanes` where mapped, plus Luke's own lane picker on pins — to show sat-nav style lane arrows. Luke wants it as close as possible to Google's in-car sat-nav.

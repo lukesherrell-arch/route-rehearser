@@ -17,12 +17,19 @@ See `route-rehearser-HANDOVER.md` for the full plan.
 - Checkpoints: auto-made at each junction with a UK tip; add your own with "Pin here"; edit, hide or delete any.
 - Routes library: open, rename, copy, delete; export/import a backup file to move routes between devices.
 
+## Round 3
+- Route line drawn over the Street View picture (toggle with **Line**). Drawn in the lane Google's camera car used, not on the road's centre line. Assumes flat ground.
+- Previous / next checkpoint buttons (⏮ ⏭, or up/down arrow keys).
+- Play speeds 1×–4×: faster speeds take bigger jumps, not shorter looks, and slow to every picture near a checkpoint.
+- Roundabout lane advice measured from where the exit road straightens out.
+
 ## Files
 - `index.html`, `css/app.css` — the page
 - `js/app.js` — screens and buttons
 - `js/google.js` — every Google call (and the usage counting)
 - `js/imagery.js`, `js/geo.js` — picking the right Street View image for each point
 - `js/checkpoints.js` — manoeuvres, banner, checkpoints and tips
+- `js/overlay.js` — the maths for the route line over Street View
 - `js/config.js` — the Google key (restricted to this site)
 
 Tests (no Google needed): `node --test tests/*.test.mjs`

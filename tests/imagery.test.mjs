@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGeom, project, headingAt, haversine } from '../js/geo.js';
-import { buildImageList } from '../js/imagery.js';
+import { buildImageList, laneTrack } from '../js/imagery.js';
 
 // A 600 m road heading east, then 300 m heading north, near Newport.
 const O = { lat: 51.58, lng: -3.0 };
@@ -59,4 +59,15 @@ test('imagery: keeps our carriageway, skips the other one, marks gaps, follows l
   assert.ok(Math.abs(gaps[0].from - 700) < 3 && Math.abs(gaps[0].to - 820) < 3);
   const north = images.find((i) => i.pano === 'N50');
   assert.ok(Math.abs(north.heading) < 1 || Math.abs(north.heading - 360) < 1);
+});
+
+test('lane track: smooth, interpolated, ignores one odd photo', () => {
+  const imgs = [0, 10, 20, 30, 40, 50].map((d, i) => ({ d, side: i === 2 ? 6 : -2 }));
+  const sideAt = laneTrack(imgs);
+  assert.equal(sideAt(20), -2); // the odd one out is smoothed away
+  assert.equal(sideAt(-5), -2);
+  assert.equal(sideAt(999), -2);
+  const two = laneTrack([{ d: 0, side: -2 }, { d: 10, side: 0 }]);
+  assert.ok(two(5) > -2.01 && two(5) < 0.01);
+  assert.equal(laneTrack([])(5), 0);
 });

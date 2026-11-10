@@ -116,3 +116,29 @@ export function findGaps(list, total, gapMin) {
   if (total - prevD > gapMin) gaps.push({ from: prevD, to: total });
   return gaps;
 }
+
+// How far to the side of Google's route line the camera car actually drove,
+// at any distance along the route: + is right, - is left. The route line
+// follows the middle of a two-way road, but the car was in a real lane, so
+// this is used to draw the route ribbon in the lane rather than on the
+// centre line. Smoothed, so one odd photo doesn't make the ribbon wiggle.
+export function laneTrack(images) {
+  const smooth = images.map((_, i) => {
+    const near = images.slice(Math.max(0, i - 2), i + 3).map((x) => x.side).sort((a, b) => a - b);
+    return near[near.length >> 1]; // middle value of the 5 nearest photos
+  });
+  return (d) => {
+    if (!images.length) return 0;
+    let lo = 0;
+    let hi = images.length - 1;
+    if (d <= images[0].d) return smooth[0];
+    if (d >= images[hi].d) return smooth[hi];
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (images[mid].d <= d) lo = mid;
+      else hi = mid;
+    }
+    const t = (d - images[lo].d) / (images[hi].d - images[lo].d || 1);
+    return smooth[lo] + (smooth[hi] - smooth[lo]) * t;
+  };
+}

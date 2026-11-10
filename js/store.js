@@ -39,7 +39,7 @@ export function deleteRoute(id) {
 }
 
 export function getSettings() {
-  return { apiKey: '', showUsage: true, ...read(SETTINGS, {}) };
+  return { apiKey: '', showUsage: true, showLine: true, ...read(SETTINGS, {}) };
 }
 
 export function setSettings(patch) {

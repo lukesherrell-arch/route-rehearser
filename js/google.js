@@ -133,29 +133,33 @@ function tidyPano(data) {
 }
 
 // Street View metadata look-ups. Google doesn't charge for these.
-export async function lookupNear(latLng, radius) {
+// "No image here" is a normal answer. Any other failure (busy, offline) is
+// tried once more, so a hiccup isn't mistaken for a gap in the imagery.
+async function lookup(req) {
   const s = await service();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    count('metadata');
+    try {
+      const { data } = await s.getPanorama(req);
+      return tidyPano(data);
+    } catch (err) {
+      if (err?.code === 'ZERO_RESULTS' || attempt === 1) return null;
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+  return null;
+}
+
+export async function lookupNear(latLng, radius) {
+  await service();
   const req = { location: latLng, radius, preference: sv.StreetViewPreference.NEAREST };
   if (sv.StreetViewSource.GOOGLE) req.sources = [sv.StreetViewSource.GOOGLE];
   else req.source = sv.StreetViewSource.OUTDOOR;
-  count('metadata');
-  try {
-    const { data } = await s.getPanorama(req);
-    return tidyPano(data);
-  } catch {
-    return null; // no image near here
-  }
+  return lookup(req);
 }
 
-export async function lookupById(id) {
-  const s = await service();
-  count('metadata');
-  try {
-    const { data } = await s.getPanorama({ pano: id });
-    return tidyPano(data);
-  } catch {
-    return null;
-  }
+export function lookupById(id) {
+  return lookup({ pano: id });
 }
 
 const ll = (p) => ({

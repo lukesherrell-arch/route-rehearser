@@ -34,19 +34,40 @@ function load() {
   }
 }
 
-export function count(kind, n = 1) {
-  session[kind] = (session[kind] || 0) + n;
-  if (kind !== 'steps') {
-    const all = load();
-    const m = (all[month()] ||= {});
-    m[kind] = (m[kind] || 0) + n;
-    if (all.day?.date !== today()) all.day = { date: today() };
-    all.day[kind] = (all.day[kind] || 0) + n;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(all));
-    } catch {}
+// Free look-ups and steps happen hundreds of times per route, so they're
+// saved and shown in batches. Anything billable is saved straight away.
+const pending = {};
+let flushTimer = null;
+
+function save(kind, n) {
+  const all = load();
+  const m = (all[month()] ||= {});
+  m[kind] = (m[kind] || 0) + n;
+  if (all.day?.date !== today()) all.day = { date: today() };
+  all.day[kind] = (all.day[kind] || 0) + n;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function flush() {
+  flushTimer = null;
+  for (const kind of Object.keys(pending)) {
+    if (kind !== 'steps') save(kind, pending[kind]);
+    delete pending[kind];
   }
   listeners.forEach((fn) => fn());
+}
+
+export function count(kind, n = 1) {
+  session[kind] = (session[kind] || 0) + n;
+  if (METERS[kind]?.billed) {
+    save(kind, n);
+    listeners.forEach((fn) => fn());
+    return;
+  }
+  pending[kind] = (pending[kind] || 0) + n;
+  flushTimer ||= setTimeout(flush, 1000);
 }
 
 export function thisMonth() {

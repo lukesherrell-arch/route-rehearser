@@ -75,6 +75,20 @@ export function exitNumber(text = '') {
   return m ? +m[1] : null;
 }
 
+// How far the road has turned between approaching a roundabout (at d) and
+// leaving it: about 0 = straight on, + = right, - = left. Roundabouts vary
+// from 15 m to 150 m across, so this follows the route until the road
+// straightens out again (the exit road), up to `limit` metres on.
+export function roundaboutTurn(g, d, limit = 150) {
+  const inbound = headingAt(g, Math.max(0, d - 25), 20);
+  const max = Math.max(40, Math.min(limit, g.total - d - 1));
+  let L = 40;
+  for (; L + 30 <= max; L += 10) {
+    if (Math.abs(turn(headingAt(g, d + L, 15), headingAt(g, d + L + 30, 15))) < 8) break;
+  }
+  return turn(inbound, headingAt(g, d + Math.min(L, max), 15));
+}
+
 function laneHint(type, exitTurn, exit) {
   if (type === 'roundabout') {
     if (exit === 1 || (exit == null && exitTurn < -45)) return 'Usually left lane · signal left as you approach';
@@ -105,11 +119,8 @@ export function manoeuvres(g, steps = []) {
     const [text, ...more] = clean(s.text).split(/\s*\n\s*/);
     const type = typeOf(s.maneuver, text);
     const d = at[i];
-    let exitTurn = 0;
-    if (type === 'roundabout') {
-      const after = at[i + 1] ?? Math.min(g.total, d + 60);
-      exitTurn = turn(headingAt(g, Math.max(0, d - 25), 20), headingAt(g, after, 20));
-    }
+    // Only look as far as the next instruction, in case that's another turn.
+    const exitTurn = type === 'roundabout' ? roundaboutTurn(g, d, (at[i + 1] ?? g.total) - d) : 0;
     out.push({ d, type: type || 'straight', text, more: more.join(' · '), lane: type ? laneHint(type, exitTurn, exitNumber(text)) : '' });
   });
   out.push({ d: g.total, type: 'arrive', text: 'Arrive at your destination', lane: '' });

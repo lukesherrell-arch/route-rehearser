@@ -7,6 +7,7 @@
   <title>Route Rehearser</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -54,6 +55,7 @@
     <section id="drive" class="view" hidden>
       <div class="panowrap">
         <div id="pano"></div>
+        <canvas id="ribbon" class="ribbon"></canvas>
         <div id="banner" class="banner" hidden>
           <div id="bnIcon" class="bn-icon"></div>
           <div class="bn-text">
@@ -62,11 +64,12 @@
             <div id="bnLane" class="bn-lane"></div>
           </div>
         </div>
-        <div id="imgDate" class="badge date"></div>
+        <div class="badge date"><span id="posText"></span><span id="imgDate"></span></div>
         <button id="btnRecentre" type="button" class="recentre">Recentre</button>
         <div id="cpCard" class="cpcard" hidden>
           <div class="cp-head"><span id="cpIcon"></span> <b id="cpTitle"></b> <span id="cpDist" class="small"></span></div>
           <div id="cpNote" class="cp-note"></div>
+          <div class="cp-more">Tap to read more</div>
           <button id="cpEdit" type="button" class="link">Edit</button>
         </div>
         <div id="miniWrap" class="mini" title="Tap to make bigger">
@@ -81,9 +84,10 @@
       </div>
       <div class="controls">
         <div class="row tools">
-          <span id="posText" class="small grow"></span>
+          <button id="btnExit" type="button" title="Back to the map">Map</button>
           <button id="btnCps" type="button">Checkpoints</button>
-          <button id="btnPin" type="button">📍 Pin here</button>
+          <button id="btnPin" type="button">📍 Pin</button>
+          <button id="btnLine" type="button" title="Show or hide the route line on the road" aria-pressed="true">Line</button>
           <button id="btnSave2" type="button">Save</button>
         </div>
         <div class="scrub">
@@ -92,12 +96,13 @@
           <input id="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Position along route">
         </div>
         <div class="buttons">
-          <button id="btnExit" type="button" title="Back to map">Map</button>
-          <button id="btnBack" type="button" aria-label="Step back">⏮</button>
+          <button id="btnPrevCp" type="button" title="Previous checkpoint" aria-label="Previous checkpoint">⏮</button>
+          <button id="btnBack" type="button" title="Step back" aria-label="Step back">◀</button>
           <button id="btnPlay" type="button" class="primary play" aria-label="Play">▶</button>
-          <button id="btnFwd" type="button" aria-label="Step forward">⏭</button>
+          <button id="btnFwd" type="button" title="Step forward" aria-label="Step forward">▶</button>
+          <button id="btnNextCp" type="button" title="Next checkpoint" aria-label="Next checkpoint">⏭</button>
           <select id="speed" aria-label="Play speed">
-            <option value="1">1×</option><option value="1.25">1¼×</option><option value="1.5">1½×</option><option value="2">2×</option>
+            <option value="1">1×</option><option value="1.5">1½×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option>
           </select>
         </div>
       </div>
@@ -155,13 +160,17 @@
       <li>Type where you start and where you're going, then <b>Find route</b>.</li>
       <li>If it's not the way your instructor goes, tap <b>+ Via point</b> then tap the road it should use. Drag a numbered pin to move it.</li>
       <li>If the route stops short (e.g. on the main road instead of in the car park), tap <b>Move end</b> then tap exactly where you want to finish. <b>Move start</b> works the same way.</li>
-      <li><b>Rehearse</b> walks you along the route in Street View. Step with ⏮ ⏭ (or arrow keys), or press ▶ to play.</li>
+      <li><b>Rehearse</b> walks you along the route in Street View. Step with ◀ ▶ (or the left/right arrow keys), or press the blue ▶ to play.</li>
+      <li><b>⏮ ⏭</b> jump to just before the previous / next checkpoint, to skip dull straight bits (up/down arrow keys).</li>
+      <li>Faster speeds take bigger jumps rather than shorter looks, so pictures have time to sharpen. Play slows to every picture near a checkpoint.</li>
+      <li>The blue <b>line on the road</b> shows where the route goes. It assumes flat ground, so it can drift a bit on hills. Turn it off with <b>Line</b>.</li>
       <li>You can drag the picture to look around. <b>Recentre</b> faces you back down the road.</li>
       <li>Grey on the slider = no Street View there, so it skips that bit. Orange marks = checkpoints.</li>
       <li>The banner at the top shows the next manoeuvre and which lane. The small map follows you; tap it to make it bigger.</li>
       <li>Checkpoints are added automatically at each junction with a tip. Use <b>📍 Pin here</b> to add your own (box junctions, tricky bits).</li>
       <li>Routes are saved on this device only. <b>My routes → Export</b> makes a backup file you can import on your other device.</li>
     </ol>
+    <p id="version" class="small"></p>
     <h3>Google key</h3>
     <p class="small">Only needed if the app says it has no key. Paste it here and press Save.</p>
     <input id="apiKey" placeholder="Paste API key" autocomplete="off">

@@ -2,9 +2,12 @@
 
 import * as G from './google.js';
 import { buildGeom, project, pointAt } from './geo.js';
-import { buildImageList, SETTINGS as IMG } from './imagery.js';
+import { buildImageList, laneTrack, SETTINGS as IMG } from './imagery.js';
 import * as store from './store.js';
 import * as CP from './checkpoints.js';
+import { ribbon } from './overlay.js';
+
+const VERSION = 'Round 3 · 10 Nov 2026';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -333,7 +336,11 @@ async function rehearse() {
   setTapMode(null);
   showView('drive');
   try {
-    state.pano ||= await G.getPanorama($('pano'));
+    if (!state.pano) {
+      state.pano = await G.getPanorama($('pano'));
+      // Keep the route line in place as the view is dragged or zoomed.
+      for (const ev of ['pov_changed', 'zoom_changed']) state.pano.addListener(ev, drawRibbon);
+    }
   } catch (err) {
     toast(err.message, 6000);
     return showView('plan');
@@ -349,7 +356,7 @@ async function rehearse() {
       onProgress: (done, total) => ($('loadBar').value = done / total),
     });
     $('loading').hidden = true;
-    state.imagery = { key, ...res };
+    state.imagery = { key, ...res, sideAt: laneTrack(res.images) };
     state.idx = 0;
     drawTrack();
   }
@@ -437,6 +444,7 @@ function updateCheckpointCard(d) {
   const c = CP.checkpointNear(state.route.checkpoints, d);
   $('cpCard').hidden = !c;
   if (!c) return;
+  if ($('cpCard').dataset.id !== c.id) $('cpCard').classList.remove('open'); // new one starts small
   $('cpCard').dataset.id = c.id;
   $('cpIcon').textContent = CP.PIN_TYPES[c.type]?.icon || '•';
   $('cpTitle').textContent = c.title;
@@ -462,12 +470,18 @@ function show(i) {
   const date = monthName(img.date);
   $('imgDate').textContent = date ? `Image: ${date}` : '';
   $('posText').textContent = `${dist(img.d)} of ${dist(state.geom.total)}`;
+  // Hide the line for a moment while the new picture arrives, then fade it in.
+  $('ribbon').classList.add('fade');
+  requestAnimationFrame(() => requestAnimationFrame(() => $('ribbon').classList.remove('fade')));
+  drawRibbon();
   updateBanner(img.d);
   updateCheckpointCard(img.d);
   updateMiniMap(img);
   $('scrub').value = Math.round(img.d);
   $('btnBack').disabled = i === 0;
   $('btnFwd').disabled = i === imgs.length - 1;
+  $('btnPrevCp').disabled = jumpTarget(-1) == null;
+  $('btnNextCp').disabled = jumpTarget(1) == null;
   if (prev && img.d - prev.d > IMG.gapMin) {
     toast(`No Street View for ${Math.round(img.d - prev.d)} m here – skipped ahead`);
   }
@@ -488,6 +502,116 @@ function step(n) {
   show(state.idx + n);
 }
 
+// ---------- route line over the picture ----------
+
+function drawRibbon() {
+  const cv = $('ribbon');
+  const ctx = cv.getContext('2d');
+  const w = cv.clientWidth;
+  const h = cv.clientHeight;
+  const scale = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(w * scale) || cv.height !== Math.round(h * scale)) {
+    cv.width = Math.round(w * scale);
+    cv.height = Math.round(h * scale);
+  }
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const img = state.imagery?.images[state.idx];
+  if (!img || !state.pano || !store.getSettings().showLine) return;
+  const slices = ribbon(state.geom, img, img.d, state.pano.getPov(), state.pano.getZoom() ?? 1, w, h, state.imagery.sideAt);
+  for (let i = 0; i < slices.length - 1; i++) {
+    const a = slices[i];
+    const b = slices[i + 1];
+    // Don't draw wild shapes from points that are far off-screen.
+    if ([a.L, a.R, b.L, b.R].some((p) => Math.abs(p.x) > 6 * w || Math.abs(p.y) > 6 * h)) continue;
+    const fade = Math.max(0, 1 - a.ahead / 150);
+    ctx.fillStyle = `rgba(42, 125, 225, ${0.15 + 0.4 * fade})`;
+    ctx.beginPath();
+    ctx.moveTo(a.L.x, a.L.y);
+    ctx.lineTo(b.L.x, b.L.y);
+    ctx.lineTo(b.R.x, b.R.y);
+    ctx.lineTo(a.R.x, a.R.y);
+    ctx.fill();
+  }
+}
+
+function toggleLine() {
+  store.setSettings({ showLine: !store.getSettings().showLine });
+  $('btnLine').setAttribute('aria-pressed', store.getSettings().showLine);
+  drawRibbon();
+}
+
+// ---------- jumping between checkpoints ----------
+
+const LEAD_IN = 40; // stop this far before a checkpoint, to see it coming
+
+// Index of the picture to jump to for the next (dir 1) or previous (dir -1)
+// checkpoint, or null if there isn't one.
+function jumpTarget(dir) {
+  const imgs = state.imagery?.images;
+  if (!imgs?.length) return null;
+  const here = imgs[state.idx].d;
+  const stops = state.route.checkpoints.filter((c) => !c.hidden).map((c) => Math.max(0, c.d - LEAD_IN));
+  const want = dir > 0 ? stops.find((d) => d > here + 15) : stops.reverse().find((d) => d < here - 15);
+  if (want == null) return null;
+  const i = nearestIndex(want);
+  return (dir > 0 ? i > state.idx : i < state.idx) ? i : null;
+}
+
+function jumpCheckpoint(dir) {
+  stop();
+  const i = jumpTarget(dir);
+  if (i == null) return;
+  state.idx = i; // so the jump doesn't announce a gap
+  show(i);
+}
+
+function nearestIndex(d) {
+  const imgs = state.imagery.images;
+  let best = 0;
+  imgs.forEach((img, i) => {
+    if (Math.abs(img.d - d) < Math.abs(imgs[best].d - d)) best = i;
+  });
+  return best;
+}
+
+// ---------- playing ----------
+
+// 1x shows every picture. Faster speeds take bigger jumps instead of shorter
+// looks, so each picture still has time to sharpen; near a checkpoint play
+// drops back to every picture so nothing important is skipped.
+const PLAY = { metresPerSec: 6, look1x: 1600, lookFast: 1300, slowBefore: 60, slowAfter: 15 };
+
+function nextPlayIndex(speed) {
+  const imgs = state.imagery.images;
+  const here = imgs[state.idx].d;
+  const nearCheckpoint = state.route.checkpoints.some(
+    (c) => !c.hidden && c.d - here < PLAY.slowBefore && here - c.d < PLAY.slowAfter
+  );
+  let i = state.idx + 1;
+  if (speed > 1 && !nearCheckpoint) {
+    const reach = here + (PLAY.metresPerSec * speed * PLAY.lookFast) / 1000;
+    // Never jump over a checkpoint's lead-in or across a gap in one go.
+    while (
+      i + 1 < imgs.length &&
+      imgs[i + 1].d <= reach &&
+      imgs[i + 1].d - imgs[i].d < IMG.gapMin &&
+      !state.route.checkpoints.some((c) => !c.hidden && c.d - PLAY.slowBefore > here && c.d - PLAY.slowBefore <= imgs[i + 1].d)
+    ) i++;
+  }
+  return i;
+}
+
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on) wakeLock ||= await navigator.wakeLock?.request('screen');
+    else (await wakeLock?.release(), (wakeLock = null));
+  } catch {
+    wakeLock = null; // not supported or not allowed: carry on without it
+  }
+}
+
 function play() {
   if (state.playing) return stop();
   const imgs = state.imagery?.images;
@@ -496,15 +620,18 @@ function play() {
   state.playing = true;
   $('btnPlay').textContent = '⏸';
   $('btnPlay').setAttribute('aria-label', 'Pause');
+  keepAwake(true); // stop the phone screen dimming while it plays
   const tick = () => {
     if (state.idx >= imgs.length - 1) return stop();
-    show(state.idx + 1);
-    state.timer = setTimeout(tick, 1600 / +$('speed').value);
+    const speed = +$('speed').value;
+    show(nextPlayIndex(speed));
+    state.timer = setTimeout(tick, speed > 1 ? PLAY.lookFast : PLAY.look1x);
   };
   state.timer = setTimeout(tick, 300);
 }
 
 function stop() {
+  if (state.playing) keepAwake(false);
   state.playing = false;
   clearTimeout(state.timer);
   $('btnPlay').textContent = '▶';
@@ -515,10 +642,7 @@ function scrubTo(d) {
   stop();
   const imgs = state.imagery?.images;
   if (!imgs?.length) return;
-  let best = 0;
-  imgs.forEach((img, i) => {
-    if (Math.abs(img.d - d) < Math.abs(imgs[best].d - d)) best = i;
-  });
+  const best = nearestIndex(d);
   state.idx = best; // so jumping along the slider doesn't announce a gap
   show(best);
 }
@@ -532,8 +656,8 @@ function renderCheckpointList() {
         .map(
           (c) => `<li class="${c.hidden ? 'dim' : ''}"><b>${CP.PIN_TYPES[c.type]?.icon || '•'} ${esc(c.title)}</b>
             <span class="tag">at ${dist(c.d)}${c.auto ? ' · auto' : ''}${c.hidden ? ' · hidden' : ''}</span>
-            <div class="row"><button type="button" class="primary" data-go="${c.id}">Go</button>
-            <button type="button" data-edit="${c.id}">Edit</button></div></li>`
+            <div class="row"><button type="button" class="primary" data-go="${esc(c.id)}">Go</button>
+            <button type="button" data-edit="${esc(c.id)}">Edit</button></div></li>`
         )
         .join('')
     : '<li class="small">No checkpoints yet. Use "📍 Pin here" to add one.</li>';
@@ -586,6 +710,8 @@ function closePin() {
   if (state.imagery) {
     drawTicks();
     updateCheckpointCard(state.imagery.images[state.idx].d);
+    $('btnPrevCp').disabled = jumpTarget(-1) == null;
+    $('btnNextCp').disabled = jumpTarget(1) == null;
   }
   if ($('dlgCps').open) renderCheckpointList();
 }
@@ -596,7 +722,7 @@ function checkpointAction(e) {
   if (!cp) return;
   if (edit) return openPin(cp);
   $('dlgCps').close();
-  scrubTo(Math.max(0, cp.d - 40)); // stop just before it, to see it coming
+  scrubTo(Math.max(0, cp.d - LEAD_IN));
 }
 
 // ---------- start-up ----------
@@ -618,6 +744,12 @@ function wire() {
   $('btnBack').onclick = () => (stop(), step(-1));
   $('btnFwd').onclick = () => (stop(), step(1));
   $('btnPlay').onclick = play;
+  $('btnPrevCp').onclick = () => jumpCheckpoint(-1);
+  $('btnNextCp').onclick = () => jumpCheckpoint(1);
+  $('btnLine').onclick = toggleLine;
+  $('btnLine').setAttribute('aria-pressed', store.getSettings().showLine);
+  $('version').textContent = `Version: ${VERSION}`;
+  window.addEventListener('resize', drawRibbon);
   $('btnRecentre').onclick = recentre;
   $('scrub').oninput = (e) => scrubTo(+e.target.value);
 
@@ -633,6 +765,7 @@ function wire() {
   $('btnPin').onclick = () => state.imagery?.images.length && openPin(null);
   $('btnCps').onclick = () => (stop(), renderCheckpointList(), $('dlgCps').showModal());
   $('cpList').onclick = checkpointAction;
+  $('cpCard').onclick = (e) => e.target.id !== 'cpEdit' && $('cpCard').classList.toggle('open');
   $('cpEdit').onclick = () => openPin(state.route.checkpoints.find((c) => c.id === $('cpCard').dataset.id));
   $('dlgPin').addEventListener('close', closePin);
   $('miniWrap').onclick = () => $('miniWrap').classList.toggle('big');
@@ -653,6 +786,8 @@ function wire() {
     if (document.querySelector('dialog[open]')) return;
     if (e.key === 'ArrowRight') (stop(), step(1));
     else if (e.key === 'ArrowLeft') (stop(), step(-1));
+    else if (e.key === 'ArrowUp') (e.preventDefault(), jumpCheckpoint(1));
+    else if (e.key === 'ArrowDown') (e.preventDefault(), jumpCheckpoint(-1));
     else if (e.key === ' ') (e.preventDefault(), play());
   });
 
