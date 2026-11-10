@@ -402,7 +402,9 @@ async function setUpMiniMap() {
   }
 }
 
-const headingUp = () => !!window.RR_CONFIG?.mapId;
+// Heading-up only when the map really is a vector map: a device without 3D
+// graphics falls back to a flat north-up map, and then the arrow turns instead.
+const headingUp = () => state.mini?.getRenderingType?.() === 'VECTOR';
 
 function updateMiniMap(img) {
   if (!state.mini) return;
