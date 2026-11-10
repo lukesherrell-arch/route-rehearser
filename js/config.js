@@ -3,5 +3,5 @@
 window.RR_CONFIG = {
   apiKey: 'AIzaSyCI9rCPcDOHS5BAflh8AqvFvjzO2neXZoo',
   // Optional vector Map ID, so the mini-map can turn to face the way you drive.
-  mapId: '',
+  mapId: '6e0bae524201cb985fed7472',
 };
