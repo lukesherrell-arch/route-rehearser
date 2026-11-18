@@ -6,7 +6,14 @@
 import { project, headingAt, bearing, haversine, angleDiff } from './geo.js';
 import { roundaboutTurn } from './checkpoints.js';
 
-const SERVERS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+// Public OpenStreetMap servers, tried in turn. They're free and run by
+// volunteers, so any one can be busy; the next one is tried if so.
+const SERVERS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
 const ROADS =
   'motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|' +
   'motorway_link|trunk_link|primary_link|secondary_link|tertiary_link';
@@ -21,41 +28,83 @@ export function thin(path, gap = 25) {
   return out;
 }
 
+// Small boxes along the route (about 400 m of route each, plus a margin).
+// Asking for roads inside boxes is quick for the servers; the old way
+// ("within 14 m of this long line") was slow and often refused when busy.
+// analyse() then keeps only the roads the route actually drives along.
+export function boxes(path, size = 400, pad = 25) {
+  const pts = thin(path);
+  const out = [];
+  let box = null;
+  let run = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (!box) box = { s: p.lat, w: p.lng, n: p.lat, e: p.lng };
+    box.s = Math.min(box.s, p.lat);
+    box.n = Math.max(box.n, p.lat);
+    box.w = Math.min(box.w, p.lng);
+    box.e = Math.max(box.e, p.lng);
+    if (i > 0) run += haversine(pts[i - 1], p);
+    if (run >= size || i === pts.length - 1) {
+      out.push(box);
+      box = { s: p.lat, w: p.lng, n: p.lat, e: p.lng }; // next box starts where this one ends
+      run = 0;
+    }
+  }
+  const dLat = pad / 110574;
+  return out.map((b) => {
+    const dLng = pad / (111320 * Math.cos((b.s * Math.PI) / 180));
+    return [b.s - dLat, b.w - dLng, b.n + dLat, b.e + dLng].map((v) => v.toFixed(5)).join(',');
+  });
+}
+
 export function buildQuery(path) {
-  const line = thin(path)
-    .map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
-    .join(',');
+  const bx = boxes(path);
+  const ways = bx.map((b) => `way(${b})[highway~"^(${ROADS})$"];`).join('');
+  const cams = bx.map((b) => `node(${b})[highway=speed_camera];`).join('');
   return (
-    `[out:json][timeout:25];` +
-    `way(around:14,${line})[highway~"^(${ROADS})$"]->.w;` +
+    `[out:json][timeout:40];` +
+    `(${ways})->.w;` +
     `node(w.w)[highway~"^(${SPOTS})$"]->.n;` +
-    `node(around:25,${line})[highway=speed_camera]->.c;` +
+    `(${cams})->.c;` +
     `(.w;.n;.c;);out body geom;`
   );
 }
 
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Asks each server in turn, and goes round twice if they're all busy.
+// The error says what went wrong, so it can be shown in Checkpoints.
 export async function fetchRoadData(path) {
   const body = 'data=' + encodeURIComponent(buildQuery(path));
-  let lastErr;
-  for (const url of SERVERS) {
-    const stop = new AbortController();
-    const timer = setTimeout(() => stop.abort(), 30000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        body,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: stop.signal,
-      });
-      if (!res.ok) throw new Error(`OpenStreetMap server said ${res.status}`);
-      return (await res.json()).elements || [];
-    } catch (err) {
-      lastErr = err;
-    } finally {
-      clearTimeout(timer);
+  const problems = [];
+  for (let round = 0; round < 2; round++) {
+    for (const url of SERVERS) {
+      const stop = new AbortController();
+      const timer = setTimeout(() => stop.abort(), 45000);
+      const host = new URL(url).host;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          body,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: stop.signal,
+        });
+        if (!res.ok) throw new Error(res.status === 429 ? 'busy (429)' : res.status === 504 ? 'timed out (504)' : `error ${res.status}`);
+        const data = await res.json();
+        // A server that ran out of time can still answer "200" with a note.
+        if (data.remark && /timed out|runtime error|out of memory/i.test(data.remark)) throw new Error('ran out of time');
+        return data.elements || [];
+      } catch (err) {
+        const why = err.name === 'AbortError' ? 'no answer' : err.message === 'Failed to fetch' ? "couldn't connect" : err.message;
+        problems.push(`${host}: ${why}`);
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    if (round === 0) await wait(3000);
   }
-  throw lastErr;
+  throw new Error(problems.slice(0, SERVERS.length).join('; '));
 }
 
 // "30 mph" -> 30. Plain numbers are km/h.

@@ -11,7 +11,7 @@ import * as U from './units.js';
 import * as Cloud from './cloud.js';
 import * as RND from './random.js';
 
-const VERSION = 'Round 5 (cloud saving, random routes) · 18 Nov 2026';
+const VERSION = 'Round 5.1 (cloud saving, random routes, steadier road details) · 18 Nov 2026';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -788,6 +788,8 @@ async function loadRoadData(force = false) {
   if (!force && route.osm?.v === OSM_VERSION) return;
   if (route.osmLoading) return;
   route.osmLoading = true;
+  route.osmFailed = null;
+  if ($('dlgCps').open) renderRoadStatus();
   try {
     const elements = await OSM.fetchRoadData(route.path);
     route.osm = { v: OSM_VERSION, at: Date.now(), ...OSM.analyse(buildGeom(route.path), elements, CP.manoeuvres(buildGeom(route.path), route.steps)) };
@@ -797,7 +799,7 @@ async function loadRoadData(force = false) {
     }
   } catch (err) {
     console.warn('Road details not loaded:', err.message);
-    route.osmFailed = true;
+    route.osmFailed = err.message || 'unknown problem';
   } finally {
     route.osmLoading = false;
     if ($('dlgCps').open) renderRoadStatus();
@@ -813,7 +815,8 @@ function renderRoadStatus() {
     ? `Found on OpenStreetMap for this route — stretches with lane arrows: ${o.lanes.length} · ` +
       `speed-limit stretches: ${o.limits.length} · lights, crossings and signs: ${o.spots.length}.`
     : r.osmFailed
-    ? "Couldn't reach OpenStreetMap just now. Lane arrows and speed limits are off; everything else works."
+    ? "Couldn't get road details from OpenStreetMap just now, so lane arrows and speed limits are off (everything else works). " +
+      `Try Refresh later. Details: ${r.osmFailed}`
     : 'Not fetched yet.';
 }
 

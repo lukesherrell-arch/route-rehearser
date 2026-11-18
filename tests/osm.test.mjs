@@ -83,6 +83,17 @@ test('query is well formed and short', () => {
   assert.ok(OSM.thin(g.pts.concat()).length <= 3);
 });
 
+test('boxes cover the whole route in short pieces', () => {
+  // a 2 km straight road going east
+  const path = Array.from({ length: 201 }, (_, i) => at(i * 10, 0));
+  const bx = OSM.boxes(path).map((b) => b.split(',').map(Number));
+  assert.ok(bx.length >= 4 && bx.length <= 6, String(bx.length));
+  for (const [s, w, n, e] of bx) assert.ok(s < n && w < e);
+  assert.ok(bx[0][1] < path[0].lng && bx.at(-1)[3] > path.at(-1).lng); // ends included
+  for (let i = 1; i < bx.length; i++) assert.ok(bx[i][1] <= bx[i - 1][3]); // no gaps between boxes
+  assert.match(OSM.buildQuery(path), /way\(51\.\d+,-3\.\d+,51\.\d+,-2\.\d+\)\[highway~/);
+});
+
 test('units', () => {
   assert.equal(U.dist(100), '110 yd');
   assert.equal(U.dist(5400), '3.4 mi');

@@ -35,6 +35,7 @@ Read this first, then `route-rehearser-HANDOVER.md` (the original plan, plus a "
 
 ## Open items (as of 18 Nov 2026, after Round 5)
 
-- Luke hasn't yet reported the **Checkpoints → Road details** counts, which would confirm OpenStreetMap works on real routes, or whether address suggestions appear.
-- Round 5 built the **random route generator** and **cloud saving** (GitHub). Waiting on Luke to create the private repo and token, connect both devices, and say how the random routes feel (they can include short in-and-out spurs where a random spot lands on a side road).
+- Address suggestions confirmed working (18 Nov). Road details mostly said "couldn't reach OpenStreetMap". Round 5.1 switched `js/osm.js` from one heavy `around:` line query to small bounding boxes along the route, added more servers and a retry, and shows the real error in Checkpoints. Waiting on Luke's report of the new message or counts.
+- Luke created the private `route-rehearser-data` repo (18 Nov). Next: fine-grained token, then Connect on PC and phone.
+- Round 5 built the **random route generator** and **cloud saving** (GitHub). Waiting on Luke to connect both devices and say how the random routes feel (they can include short in-and-out spurs where a random spot lands on a side road).
 - Later ideas: quiz mode, a tricky-junction drill, moving Pages to `main`, an optional passcode screen.
