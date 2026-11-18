@@ -218,6 +218,9 @@ button.link { background: none; border: 0; color: var(--accent); min-height: 0; 
 .track { position: absolute; left: 0; right: 0; top: 11px; height: 8px; border-radius: 4px; background: #c9e0fb; overflow: hidden; }
 .track i { position: absolute; top: 0; bottom: 0; background: var(--gap); }
 .ticks { position: absolute; left: 0; right: 0; top: 7px; height: 16px; pointer-events: none; }
+.ticks u { position: absolute; top: 14px; height: 5px; background: #1e9e4a; border-radius: 3px; }
+.lanego button { min-height: 34px; padding: 3px 10px; font-size: 14px; }
+.lanego:empty { display: none; }
 .ticks b { position: absolute; width: 3px; height: 16px; margin-left: -1px; background: #f08c00; border-radius: 2px; }
 .tools { margin-bottom: 2px; justify-content: center; flex-wrap: nowrap; gap: 6px; }
 .tools button { min-height: 34px; padding: 4px 10px; font-size: 14px; }

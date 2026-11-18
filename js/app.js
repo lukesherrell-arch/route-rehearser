@@ -11,7 +11,7 @@ import * as U from './units.js';
 import * as Cloud from './cloud.js';
 import * as RND from './random.js';
 
-const VERSION = 'Round 5.1 (cloud saving, random routes, steadier road details) · 18 Nov 2026';
+const VERSION = 'Round 5.2 (cloud saving, random routes, lane-arrow marks) · 18 Nov 2026';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -652,7 +652,27 @@ function drawTicks() {
   $('ticks').innerHTML = state.route.checkpoints
     .filter((c) => !c.hidden)
     .map((c) => `<b style="left:${(100 * c.d) / total}%"></b>`)
-    .join('');
+    .join('') +
+    // Green bars where lane arrows show in the banner (from about 130 yd before).
+    (state.route.osm?.lanes || [])
+      .map((l) => {
+        const from = Math.max(0, l.from - LANE_LEAD);
+        return `<u style="left:${(100 * from) / total}%;width:${Math.max(0.4, (100 * (l.to - from)) / total)}%"></u>`;
+      })
+      .join('');
+}
+
+const LANE_LEAD = 120; // matches OSM.lanesAt: arrows show from this far before a stretch
+
+// Lane-arrow stretches, merged where they run on from each other, for the Go buttons.
+function laneStretches() {
+  const out = [];
+  for (const l of state.route.osm?.lanes || []) {
+    const last = out[out.length - 1];
+    if (last && l.from - last.to < LANE_LEAD) last.to = Math.max(last.to, l.to);
+    else out.push({ from: l.from, to: l.to });
+  }
+  return out;
 }
 
 async function setUpMiniMap() {
@@ -795,6 +815,7 @@ async function loadRoadData(force = false) {
     route.osm = { v: OSM_VERSION, at: Date.now(), ...OSM.analyse(buildGeom(route.path), elements, CP.manoeuvres(buildGeom(route.path), route.steps)) };
     if (route === state.route) {
       persist();
+      if (state.imagery) drawTicks();
       if (state.imagery?.images.length) updateBanner(state.imagery.images[state.idx].d);
     }
   } catch (err) {
@@ -818,6 +839,11 @@ function renderRoadStatus() {
     ? "Couldn't get road details from OpenStreetMap just now, so lane arrows and speed limits are off (everything else works). " +
       `Try Refresh later. Details: ${r.osmFailed}`
     : 'Not fetched yet.';
+  const stretches = o ? laneStretches() : [];
+  $('laneGo').innerHTML = stretches.length
+    ? '<span class="small">Lane arrows (green on the slider):</span> ' +
+      stretches.map((s, i) => `<button type="button" data-lane="${Math.round(s.from)}">${i + 1} · at ${dist(s.from)}</button>`).join('')
+    : '';
 }
 
 function updateCheckpointCard(d) {
@@ -1115,6 +1141,13 @@ function refreshTips() {
   renderRoadStatus();
 }
 
+function laneAction(e) {
+  const from = e.target.dataset?.lane;
+  if (from == null || !state.imagery) return;
+  $('dlgCps').close();
+  scrubTo(Math.max(0, +from - LANE_LEAD + 25)); // just inside where the arrows switch on
+}
+
 function checkpointAction(e) {
   const { go, edit } = e.target.dataset || {};
   const cp = state.route.checkpoints.find((c) => c.id === (go || edit));
@@ -1190,6 +1223,7 @@ function wire() {
   $('btnPin').onclick = () => state.imagery?.images.length && openPin(null);
   $('btnCps').onclick = () => (stop(), renderCheckpointList(), renderRoadStatus(), $('dlgCps').showModal());
   $('cpList').onclick = checkpointAction;
+  $('laneGo').onclick = laneAction;
   $('cpCard').onclick = (e) => e.target.id !== 'cpEdit' && $('cpCard').classList.toggle('open');
   $('cpEdit').onclick = () => openPin(state.route.checkpoints.find((c) => c.id === $('cpCard').dataset.id));
   $('dlgPin').addEventListener('close', closePin);
