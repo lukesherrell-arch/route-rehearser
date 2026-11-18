@@ -11,7 +11,7 @@ import * as U from './units.js';
 import * as Cloud from './cloud.js';
 import * as RND from './random.js';
 
-const VERSION = 'Round 5.2 (cloud saving, random routes, lane-arrow marks) · 18 Nov 2026';
+const VERSION = 'Round 5.3 (cloud saving, random routes, lane-arrow fixes) · 18 Nov 2026';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -801,7 +801,7 @@ function updateBanner(d) {
 
 // Fetches lanes, speed limits and signals for the route from OpenStreetMap
 // (free, no key). Kept with the route, so it's only fetched once.
-const OSM_VERSION = 1;
+const OSM_VERSION = 2; // 2: lanes follow Google's instruction (fixes slight-left forks)
 
 async function loadRoadData(force = false) {
   const route = state.route;

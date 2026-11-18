@@ -106,3 +106,17 @@ test('units', () => {
   assert.equal(U.ahead(120), '120 m');
   U.setImperial(true);
 });
+
+test('lanes follow Google\'s instruction at a gentle fork', () => {
+  // Straight road east; Google says "Slight left" at 600 m, which bends too
+  // little to measure. OpenStreetMap: left|none|none on the approach.
+  const g2 = buildGeom([at(0, 0), at(600, 0), at(900, 20)]);
+  const els = [{ type: 'way', id: 1, nodes: [1, 2], geometry: geo([300, 0], [590, 0]),
+    tags: { highway: 'primary', oneway: 'yes', 'turn:lanes': 'left|none|none' } }];
+  const left = OSM.analyse(g2, els, [{ d: 600, type: 'keep', text: 'Slight left onto Spytty Rd' }]);
+  assert.deepEqual(left.lanes[0].use, [true, false, false]);
+  const ahead = OSM.analyse(g2, els, []);
+  assert.deepEqual(ahead.lanes[0].use, [false, true, true]);
+  const right = OSM.analyse(g2, els, [{ d: 600, type: 'keep', text: 'Keep right' }]);
+  assert.deepEqual(right.lanes[0].use, [false, true, true]); // no right arrow: unmarked lanes
+});

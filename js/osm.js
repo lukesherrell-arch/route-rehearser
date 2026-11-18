@@ -184,6 +184,16 @@ function join(list, same, gap = 30) {
   return out;
 }
 
+// Which way a sat-nav instruction goes, in degrees (- left, + right),
+// or null if it doesn't say.
+export function moveTurn(g, m) {
+  if (m.type === 'roundabout') return roundaboutTurn(g, m.d);
+  const side = /\bleft\b/i.test(m.text || '') || m.type === 'left' ? -1 : /\bright\b/i.test(m.text || '') || m.type === 'right' ? 1 : 0;
+  if (!side) return null;
+  const gentle = m.type === 'keep' || m.type === 'merge' || /slight|keep|fork|slip/i.test(m.text || '');
+  return side * (gentle ? 25 : 90);
+}
+
 // Fits OpenStreetMap's roads onto our route.
 //   g: route geometry, elements: OpenStreetMap's answer, moves: manoeuvres
 // Returns { limits: [{from,to,mph}], lanes: [{from,to,lanes,use}], spots: [{d,type,icon,label}] }
@@ -233,12 +243,12 @@ export function analyse(g, elements, moves = []) {
   }
 
   const lanes = join(laneBits, (a, b) => a.key === b.key).map(({ from, to, lanes }) => {
-    // What does the route do where these lanes end? At a roundabout, use the
-    // overall direction of the exit; otherwise the turn right there.
-    const rb = moves.find((m) => m.type === 'roundabout' && m.d > to - 30 && m.d < to + 80);
-    const turn = rb
-      ? roundaboutTurn(g, rb.d)
-      : signedTurn(headingAt(g, Math.max(0, to - 20), 12), headingAt(g, Math.min(g.total, to + 30), 12));
+    // What does the route do where these lanes end? Google's own instruction
+    // there comes first ("Slight left onto…" bends too gently to measure);
+    // at a roundabout, the overall direction of the exit; otherwise the
+    // measured turn.
+    const m = moves.find((x) => x.type !== 'straight' && x.type !== 'arrive' && x.d > to - 30 && x.d < to + 80);
+    const turn = (m && moveTurn(g, m)) ?? signedTurn(headingAt(g, Math.max(0, to - 20), 12), headingAt(g, Math.min(g.total, to + 30), 12));
     return { from, to, lanes, use: lanesToUse(lanes, turn) };
   });
 
