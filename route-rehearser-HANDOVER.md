@@ -154,4 +154,6 @@ Not yet checked against live data: the cloud build session could not reach overp
 
 Address suggestions need "Places API (New)" enabled and added to the key's API restrictions.
 
+Round 5 (18 Nov 2026) added cloud saving to a private GitHub repo and the random route generator (see README).
+
 Ideas still open: quiz mode, tricky-junction drill, moving Pages to the `main` branch, optional passcode screen.

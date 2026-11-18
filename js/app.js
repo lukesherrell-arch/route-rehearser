@@ -8,8 +8,10 @@ import * as CP from './checkpoints.js';
 import { ribbon } from './overlay.js';
 import * as OSM from './osm.js';
 import * as U from './units.js';
+import * as Cloud from './cloud.js';
+import * as RND from './random.js';
 
-const VERSION = 'Round 4 (sat-nav) · 10 Nov 2026';
+const VERSION = 'Round 5 (cloud saving, random routes) · 18 Nov 2026';
 import { METERS, count, thisMonth, thisSession, onChange } from './usage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -27,7 +29,9 @@ const state = {
   editing: null, // checkpoint open in the pin dialog
   line: null,
   markers: [],
-  tapMode: null, // 'via' | 'start' | 'end': what the next tap on the map sets
+  tapMode: null, // 'via' | 'start' | 'end' | 'random': what the next tap on the map sets
+  random: null, // settings of the last random route, for "Another"
+  randStart: null, // start spot picked on the map for a random route
   imagery: null, // { key, images, gaps }
   idx: 0,
   playing: false,
@@ -91,6 +95,7 @@ async function findRoute(e) {
     vias: keep ? state.route.vias : [],
     fromPoint: keep ? state.route.fromPoint : null,
     toPoint: keep ? state.route.toPoint : null,
+    avoidMotorways: keep ? !!state.route.avoidMotorways : false,
   });
 }
 
@@ -130,6 +135,7 @@ function setRoute(route, fresh = false) {
   drawRoute();
   updateSummary();
   $('routeInfo').hidden = false;
+  $('btnAnother').hidden = !route.isRandom;
   renderVias();
 }
 
@@ -192,6 +198,7 @@ const TAP_HINTS = {
   via: 'Tap the road you want the route to use',
   start: 'Tap exactly where you want to start',
   end: 'Tap exactly where you want to finish',
+  random: 'Tap where the random route should start',
 };
 
 function setTapMode(mode) {
@@ -204,6 +211,12 @@ function setTapMode(mode) {
 
 function mapTapped(latLng) {
   const mode = state.tapMode;
+  if (mode === 'random') {
+    setTapMode(null);
+    state.randStart = { lat: latLng.lat(), lng: latLng.lng() };
+    $('rndStart').value = '';
+    return openRandom();
+  }
   if (!mode || !state.route) return;
   setTapMode(null);
   if (mode === 'via') return addVia(latLng);
@@ -274,6 +287,7 @@ function serialise(r) {
     millis: r.millis,
     checkpoints: r.checkpoints,
     osm: r.osm || null,
+    avoidMotorways: !!r.avoidMotorways,
   };
 }
 
@@ -361,6 +375,205 @@ function openSaved(id) {
   showView('plan');
   setRoute(r); // no Google route call: uses the saved line
   $('dlgRoutes').close();
+}
+
+// ---------- cloud saving (private GitHub repository) ----------
+
+const cloud = { busy: false, last: 0, error: '', again: false, timer: null };
+
+function cloudCfg() {
+  const c = store.getSettings().cloud;
+  return c?.repo && c?.token ? c : null;
+}
+
+function renderCloud() {
+  const cfg = cloudCfg();
+  $('cloudSetup').hidden = !!cfg;
+  $('cloudOn').hidden = !cfg;
+  $('btnCloudSync').disabled = cloud.busy;
+  const st = $('cloudStatus');
+  st.className = 'small ' + (cloud.error ? 'cloud-bad' : cfg && cloud.last ? 'cloud-ok' : '');
+  st.textContent = !cfg
+    ? cloud.error || 'Off: routes are on this device only.'
+    : cloud.busy
+    ? `Syncing with ${cfg.repo}…`
+    : cloud.error
+    ? `⚠ ${cloud.error}`
+    : cloud.last
+    ? `✓ On (${cfg.repo}). Last synced ${new Date(cloud.last).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`
+    : `On (${cfg.repo}).`;
+}
+
+// Merges this device's routes with the cloud copy. quiet = no message unless
+// routes arrived from the other device.
+async function cloudSync(quiet = true) {
+  const cfg = cloudCfg();
+  if (!cfg) return;
+  if (cloud.busy) return void (cloud.again = true);
+  cloud.busy = true;
+  cloud.again = false;
+  renderCloud();
+  try {
+    const before = store.routeData();
+    const res = await Cloud.sync(cfg, before);
+    // Anything saved here while that was happening is kept, and sent next time.
+    const merged = Cloud.merge(store.routeData(), res.data);
+    store.setRouteData(merged);
+    if (Cloud.fingerprint(merged) !== Cloud.fingerprint(res.data)) cloud.again = true;
+    cloud.last = Date.now();
+    cloud.error = '';
+    if (res.pulled) {
+      const n = merged.routes.length - before.routes.length;
+      toast(n > 0 ? `${n} route${n === 1 ? '' : 's'} arrived from your other device.` : 'Routes updated from your other device.');
+      if ($('dlgRoutes').open) renderRouteList();
+    } else if (!quiet) toast(res.pushed ? 'Routes saved to the cloud.' : 'Already up to date.');
+  } catch (err) {
+    console.warn('Cloud saving:', err);
+    if (!quiet || !cloud.error) toast(`Cloud saving: ${err.message}`, 7000);
+    cloud.error = err.message;
+  }
+  cloud.busy = false;
+  renderCloud();
+  if (cloud.again) laterSync(1000);
+}
+
+function laterSync(ms = 4000) {
+  if (!cloudCfg()) return;
+  clearTimeout(cloud.timer);
+  cloud.timer = setTimeout(cloudSync, ms);
+}
+
+async function cloudConnect() {
+  const repo = Cloud.parseRepo($('cloudRepo').value);
+  const token = $('cloudToken').value.trim();
+  if (!repo) return toast('Type the repository as your-name/route-rehearser-data.', 6000);
+  if (!token) return toast('Paste the token from GitHub.');
+  $('btnCloudConnect').disabled = true;
+  $('cloudStatus').textContent = 'Checking…';
+  const problem = await Cloud.check({ repo, token });
+  $('btnCloudConnect').disabled = false;
+  cloud.error = problem || '';
+  if (problem) return renderCloud();
+  store.setSettings({ cloud: { repo, token } });
+  $('cloudToken').value = '';
+  await cloudSync(false);
+}
+
+function cloudDisconnect() {
+  if (!confirm('Stop cloud saving on this device? Your routes stay here and in the repository.')) return;
+  store.setSettings({ cloud: null });
+  cloud.error = '';
+  cloud.last = 0;
+  renderCloud();
+}
+
+// ---------- random practice routes ----------
+
+function openRandom() {
+  $('rndPicked').textContent = state.randStart ? '✓ Start picked on the map' : '';
+  $('dlgRandom').returnValue = '';
+  $('dlgRandom').showModal();
+}
+
+function randomClosed() {
+  if ($('dlgRandom').returnValue !== 'go') return;
+  const startText = $('rndStart').value.trim();
+  if (!startText && !state.randStart) return toast('Type a start, or pick it on the map.'), openRandom();
+  const opts = {
+    startText,
+    startPoint: startText ? null : state.randStart,
+    miles: parseFloat($('rndMiles').value) || 0,
+    mins: parseFloat($('rndMins').value) || 0,
+    loop: $('rndLoop').checked,
+    avoid: $('rndAvoid').checked,
+  };
+  if (!(opts.miles > 0) && !(opts.mins > 0)) return toast('Give a distance in miles, a time in minutes, or both.'), openRandom();
+  makeRandom(opts);
+}
+
+// A road spot with Street View near each random point (these look-ups are free).
+async function roadSpots(start, radius) {
+  const spots = RND.pickSpots(radius);
+  const found = await Promise.all(
+    spots.map(async ({ bearing, metres }) => {
+      for (const [db, k] of [[0, 1], [20, 0.8], [-20, 0.65], [45, 0.5]]) {
+        const p = await G.lookupNear(RND.offset(start, bearing + db, metres * k), Math.max(150, radius / 8));
+        if (p && RND.metresBetween(start, p) > 150) return { lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6) };
+      }
+      return null;
+    })
+  );
+  return found.filter(Boolean);
+}
+
+let makingRandom = false;
+
+async function makeRandom(opts) {
+  if (makingRandom || !state.map) return;
+  makingRandom = true;
+  setTapMode(null);
+  const p = RND.plan(opts);
+  hint('Making a random route…');
+  try {
+    // No address look-up service: find where a typed start is by working out
+    // a route from it, and keep the spot so "Another" doesn't need to again.
+    if (!opts.startPoint) {
+      const c = state.map.getCenter();
+      const away = RND.offset({ lat: c.lat(), lng: c.lng() }, 45, 4000);
+      const r = await G.computeRoute({ from: opts.startText, to: away, vias: [] });
+      opts.startPoint = r.path[0];
+    }
+    const start = opts.startPoint;
+    const label = opts.startText || 'Spot on map';
+    let radius = p.radius;
+    let best = null;
+    for (let attempt = 0; attempt < 4 && !(best && RND.closeEnough(best.mins, p.want)); attempt++) {
+      const spots = await roadSpots(start, radius);
+      if (spots.length < 2) {
+        radius = Math.min(p.maxM, radius * 1.5);
+        continue;
+      }
+      const base = {
+        id: null,
+        name: '',
+        from: label,
+        to: opts.loop ? label : 'Random finish',
+        vias: opts.loop ? spots : spots.slice(0, -1),
+        fromPoint: start,
+        toPoint: opts.loop ? start : spots[spots.length - 1],
+        avoidMotorways: opts.avoid,
+      };
+      let r;
+      try {
+        r = await G.computeRoute(base);
+      } catch (err) {
+        if (err.safety) throw err;
+        console.warn('Random route try failed, trying other spots:', err.message);
+        continue; // a spot Google can't route through: pick fresh ones
+      }
+      const mins = r.millis / 60000;
+      const off = p.want ? Math.abs(mins - p.want) : 0;
+      if (!best || off < best.off) best = { route: { ...base, ...r }, off, mins };
+      radius = RND.adjustRadius(radius, mins, p.want, p.maxM);
+    }
+    if (!best) throw new Error('no roads with Street View found around there. Try a bigger distance.');
+    const mins = Math.round(best.route.millis / 60000);
+    best.route.name = `Random ${opts.loop ? 'loop' : 'route'} from ${label} (${mins} min)`;
+    best.route.isRandom = true;
+    state.random = opts;
+    $('from').value = best.route.from;
+    $('to').value = best.route.to;
+    showView('plan');
+    setRoute(best.route, true);
+    hint('');
+    if (p.want && !RND.closeEnough(mins, p.want))
+      toast(`Closest found was ${mins} min. Try a bigger distance, or press 🎲 Another.`, 6000);
+  } catch (err) {
+    console.error(err);
+    hint('');
+    toast(err.safety ? err.message : `Couldn't make a random route: ${opts.startPoint ? err.message : "couldn't find that start. Try adding the town, or pick it on the map."}`, 6000);
+  }
+  makingRandom = false;
 }
 
 // ---------- rehearsing ----------
@@ -936,7 +1149,33 @@ function wire() {
   $('btnRecentre').onclick = recentre;
   $('scrub').oninput = (e) => scrubTo(+e.target.value);
 
-  $('btnRoutes').onclick = () => (renderRouteList(), $('dlgRoutes').showModal());
+  $('btnRoutes').onclick = () => {
+    renderRouteList();
+    renderCloud();
+    $('dlgRoutes').showModal();
+    if (cloudCfg() && Date.now() - cloud.last > 30000) cloudSync();
+  };
+  $('btnCloudConnect').onclick = cloudConnect;
+  $('btnCloudSync').onclick = () => cloudSync(false);
+  $('btnCloudOff').onclick = cloudDisconnect;
+  store.onRoutesChanged(() => laterSync());
+  // Pick up routes saved on the other device when coming back to the app.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - cloud.last > 60000) laterSync(500);
+  });
+
+  $('btnRandom').onclick = openRandom;
+  $('btnAnother').onclick = () => state.random && makeRandom(state.random);
+  $('btnRndPick').onclick = () => {
+    $('dlgRandom').close();
+    setTapMode('random');
+  };
+  $('rndStart').addEventListener('input', () => {
+    state.randStart = null;
+    $('rndPicked').textContent = '';
+  });
+  $('dlgRandom').addEventListener('close', randomClosed);
+  wireSuggestions($('rndStart'));
   $('routeList').onclick = libraryAction;
   $('btnExport').onclick = exportRoutes;
   $('btnImport').onclick = () => $('importFile').click();
@@ -993,6 +1232,7 @@ function wire() {
 async function start() {
   U.setImperial(store.getSettings().imperial);
   wire();
+  cloudSync(); // in the background
   const key = store.getSettings().apiKey || window.RR_CONFIG?.apiKey;
   if (!key) {
     hint('No Google key yet. Open Help to add one.');

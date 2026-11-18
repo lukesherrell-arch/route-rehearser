@@ -171,7 +171,7 @@ const ll = (p) => ({
 // pass through a spot without stopping there.
 // fromPoint / toPoint, when set, are exact spots tapped on the map and are
 // used instead of the typed addresses.
-export async function computeRoute({ from, to, vias, fromPoint, toPoint }) {
+export async function computeRoute({ from, to, vias, fromPoint, toPoint, avoidMotorways }) {
   guard('routes');
   const { Route } = await google.maps.importLibrary('routes');
   count('routes');
@@ -184,6 +184,8 @@ export async function computeRoute({ from, to, vias, fromPoint, toPoint }) {
     polylineQuality: 'HIGH_QUALITY',
     fields: ['path', 'legs', 'distanceMeters', 'durationMillis'],
   };
+  // Learners may only use motorways with an approved instructor in a dual-control car.
+  if (avoidMotorways) req.routeModifiers = { avoidHighways: true };
   if (vias.length) {
     req.intermediates = vias.map((v) => ({ location: { lat: v.lat, lng: v.lng }, via: true }));
   }

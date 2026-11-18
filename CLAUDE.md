@@ -21,6 +21,8 @@ Read this first, then `route-rehearser-HANDOVER.md` (the original plan, plus a "
 
 - **One `StreetViewPanorama` per page visit**, moved with `setPano()`. Confirmed on Google's billing report: stepping isn't charged. Never create more panoramas, and never use the Static Street View API for stepping.
 - Street View metadata look-ups (`StreetViewService.getPanorama`) are free. Every billable call goes through `js/google.js` and is counted in `js/usage.js`.
+- Cloud saving (`js/cloud.js`) talks to api.github.com straight from the browser with Luke's fine-grained token, stored in localStorage (`rr.settings.cloud`) on each device. Data repo: private `route-rehearser-data` that Luke creates himself (this session's GitHub tools can't create repos). Deletions are kept as tombstones (`rr.deleted`) so they sync.
+- Random routes (`js/random.js` + `makeRandom` in `js/app.js`): a typed start costs one extra route call (no Geocoding API), then up to 4 route calls.
 - Lane, speed-limit and signal data come from OpenStreetMap (Overpass API) in `js/osm.js`. Coverage is patchy, so the app must work without it.
 - `VERSION` in `js/app.js` is shown to Luke in Help. Update it with each round.
 
@@ -31,9 +33,8 @@ Read this first, then `route-rehearser-HANDOVER.md` (the original plan, plus a "
 - The cloud session **cannot** reach overpass-api.de, so OpenStreetMap results must be checked by Luke.
 - Headless Chromium here has no WebGL, so the tilted vector mini-map can't be seen in screenshots.
 
-## Open items (as of 18 Nov 2026)
+## Open items (as of 18 Nov 2026, after Round 5)
 
 - Luke hasn't yet reported the **Checkpoints → Road details** counts, which would confirm OpenStreetMap works on real routes, or whether address suggestions appear.
-- Requested next: a **random route generator**. It takes a start, a radius in miles and/or a target travel time, for practising driving around an area.
-- Requested next: **cloud saving of routes**, so PC and phone share them. Recommended option: a separate **private** GitHub repo written via a fine-grained token, entered once per device. Google Drive is the alternative.
+- Round 5 built the **random route generator** and **cloud saving** (GitHub). Waiting on Luke to create the private repo and token, connect both devices, and say how the random routes feel (they can include short in-and-out spurs where a random spot lands on a side road).
 - Later ideas: quiz mode, a tricky-junction drill, moving Pages to `main`, an optional passcode screen.

@@ -9,6 +9,7 @@
   --gap: #9aa3ad;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -57,7 +58,7 @@ main { flex: 1; min-height: 0; display: flex; }
 .view[hidden] { display: none; }
 
 .form { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 8px 12px; }
-@media (min-width: 720px) { .form { grid-template-columns: 1fr 1fr auto; } }
+@media (min-width: 720px) { .form { grid-template-columns: 1fr 1fr auto auto; } }
 
 .mapwrap { position: relative; flex: 1; min-height: 200px; }
 #map { position: absolute; inset: 0; background: #dfe5ea; }
@@ -257,3 +258,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
 td:last-child { text-align: right; white-space: nowrap; }
 .list .row button { min-height: 36px; padding: 4px 10px; font-size: 14px; }
+
+.cloud-ok { color: #1e7b34; }
+.cloud-bad { color: #b3261e; }
+#dlgRandom .row label { display: grid; gap: 2px; font-size: 14px; flex: 1; min-width: 120px; }

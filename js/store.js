@@ -28,14 +28,37 @@ export function getRoute(id) {
   return read(ROUTES, []).find((r) => r.id === id);
 }
 
+// Called after any change to the saved routes (cloud saving listens here).
+let changed = () => {};
+export function onRoutesChanged(fn) {
+  changed = fn;
+}
+
 export function saveRoute(route) {
   const all = read(ROUTES, []).filter((r) => r.id !== route.id);
   all.push({ ...route, savedAt: Date.now() });
-  return write(ROUTES, all);
+  const ok = write(ROUTES, all);
+  if (ok) changed();
+  return ok;
 }
+
+// Deleted routes are remembered (id and time only), so cloud saving
+// doesn't bring them back from the other device.
+const DELETED = 'rr.deleted';
 
 export function deleteRoute(id) {
   write(ROUTES, read(ROUTES, []).filter((r) => r.id !== id));
+  write(DELETED, { ...read(DELETED, {}), [id]: Date.now() });
+  changed();
+}
+
+// Everything cloud saving needs to compare and merge.
+export function routeData() {
+  return { routes: read(ROUTES, []), deleted: read(DELETED, {}) };
+}
+
+export function setRouteData({ routes, deleted }) {
+  return write(ROUTES, routes) && write(DELETED, deleted);
 }
 
 export function getSettings() {
@@ -70,6 +93,7 @@ export function importRoutes(data) {
     }
   }
   const ok = write(ROUTES, all);
+  if (ok && added + updated) changed();
   return { ok, added, updated, skipped: incoming.length - added - updated };
 }
 

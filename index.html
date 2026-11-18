@@ -28,6 +28,7 @@
         <div class="field"><input id="from" placeholder="From, e.g. Newport railway station" autocomplete="off" required><ul class="suggest" hidden></ul></div>
         <div class="field"><input id="to" placeholder="To, e.g. Tesco Spytty" autocomplete="off" required><ul class="suggest" hidden></ul></div>
         <button type="submit" class="primary">Find route</button>
+        <button id="btnRandom" type="button" title="Make a random practice route around an area">🎲 Random</button>
       </form>
       <div class="mapwrap">
         <div id="map"></div>
@@ -46,6 +47,7 @@
         </div>
         <div class="row">
           <button id="btnSave" type="button">Save route</button>
+          <button id="btnAnother" type="button" title="Make a different random route with the same settings" hidden>🎲 Another</button>
           <button id="btnRehearse" type="button" class="primary grow">Rehearse ▶</button>
         </div>
       </div>
@@ -120,14 +122,49 @@
 
   <dialog id="dlgRoutes">
     <h2>My routes</h2>
-    <p class="small">Saved in this browser on this device only. Use <b>Export</b> to back them up or move them to your other device, then <b>Import</b> the file there.</p>
+    <ul id="routeList" class="list"></ul>
+    <h3>Cloud saving</h3>
+    <p id="cloudStatus" class="small"></p>
+    <div id="cloudSetup" class="stack">
+      <p class="small">Shares your routes between this device and your others, using a <b>private</b> GitHub repository. Do this once on each device (Help explains how to make the token).</p>
+      <label>Repository <input id="cloudRepo" placeholder="your-name/route-rehearser-data" autocomplete="off" spellcheck="false"></label>
+      <label>Token <input id="cloudToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
+      <div class="row"><button id="btnCloudConnect" type="button" class="primary">Connect</button></div>
+    </div>
+    <div id="cloudOn" class="row" hidden>
+      <button id="btnCloudSync" type="button">Sync now</button>
+      <button id="btnCloudOff" type="button">Disconnect</button>
+    </div>
+    <h3>Backup file</h3>
+    <p class="small">Export makes a file with every route; Import adds routes from one.</p>
     <div class="row">
       <button id="btnExport" type="button">Export all</button>
       <button id="btnImport" type="button">Import…</button>
       <input id="importFile" type="file" accept=".json,application/json" hidden>
     </div>
-    <ul id="routeList" class="list"></ul>
     <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <dialog id="dlgRandom">
+    <h2>Random practice route</h2>
+    <p class="small">Makes a route through a few random roads around where you start. Give a distance, a time, or both.</p>
+    <form id="randomForm" method="dialog" class="stack">
+      <label>Start
+        <div class="field"><input id="rndStart" placeholder="e.g. Newport railway station" autocomplete="off"><ul class="suggest" hidden></ul></div>
+      </label>
+      <div class="row"><button id="btnRndPick" type="button">Pick start on map</button> <span id="rndPicked" class="small"></span></div>
+      <div class="row">
+        <label class="grow">Up to (miles away) <input id="rndMiles" type="number" min="0.3" max="30" step="0.1" value="2" inputmode="decimal"></label>
+        <label class="grow">About (minutes) <input id="rndMins" type="number" min="5" max="120" step="1" placeholder="any" inputmode="numeric"></label>
+      </div>
+      <label class="check"><input id="rndLoop" type="checkbox" checked> Finish back at the start</label>
+      <label class="check"><input id="rndAvoid" type="checkbox" checked> Avoid motorways</label>
+      <p class="small">Each try uses 2–4 route look-ups from Google's free monthly allowance.</p>
+      <div class="row">
+        <button value="go" class="primary">Make route</button>
+        <button value="cancel" formnovalidate>Cancel</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="dlgCps">
@@ -181,13 +218,22 @@
       <li>Grey on the slider = no Street View there, so it skips that bit. Orange marks = checkpoints.</li>
       <li>The green banner shows the next manoeuvre and which lane. The map follows you like a sat-nav.</li>
       <li>Checkpoints are added automatically at each junction with a tip. Use <b>📍 Pin here</b> to add your own (box junctions, tricky bits).</li>
-      <li>Routes are saved on this device only. <b>Routes → Export</b> makes a backup file you can import on your other device.</li>
+      <li><b>🎲 Random</b> makes a practice route round an area: give a start, how far out (miles) and/or about how long (minutes). <b>🎲 Another</b> makes a different one with the same settings. Save the ones you like.</li>
+      <li>Routes are saved on this device. To share them between your PC and phone, set up <b>cloud saving</b> (below) once on each.</li>
       <li>On a wide screen the <b>sat-nav</b> sits beside the picture. ⤡ makes it small; click the small map to bring it back.</li>
       <li><b>Lane arrows, speed limits, lights and crossings</b> come from OpenStreetMap, a free volunteer-made map. Some roads have them and some don't, and they can be out of date, so always go by the real signs and markings.</li>
     </ol>
     <label class="check"><input id="useImperial" type="checkbox"> Show distances in miles and yards</label>
     <p id="version" class="small"></p>
     <p class="small">Road details © OpenStreetMap contributors.</p>
+    <h3>Setting up cloud saving</h3>
+    <ol class="small">
+      <li>On github.com, make a new repository called <b>route-rehearser-data</b>. Choose <b>Private</b>.</li>
+      <li>Go to Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token.</li>
+      <li>Repository access: <b>Only select repositories</b> → route-rehearser-data. Permissions → Repository → <b>Contents: Read and write</b>.</li>
+      <li>Copy the token, then in this app open <b>Routes</b>, type the repository as <i>your-name/route-rehearser-data</i>, paste the token and press <b>Connect</b>. Repeat on your other device.</li>
+    </ol>
+    <p class="small">The token stays in this browser only. It can only reach that one repository.</p>
     <h3>Google key</h3>
     <p class="small">Only needed if the app says it has no key. Paste it here and press Save.</p>
     <input id="apiKey" placeholder="Paste API key" autocomplete="off">

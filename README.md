@@ -29,6 +29,10 @@ See `route-rehearser-HANDOVER.md` for the full plan.
 - Address suggestions while typing (Places API (New), `AutocompleteSuggestion`). Turns itself off quietly if the API isn't enabled.
 - Miles and yards by default (setting in Help), carries on where you stopped, old-picture warning, "Refresh tips and road details" button, slimmer layout for a phone held sideways.
 
+## Round 5 (cloud saving, random routes)
+- **Cloud saving:** saved routes go to `routes.json` in a private GitHub repository, so PC and phone share them. Set up once per device in Routes → Cloud saving (repository name + fine-grained token with Contents read/write on that repo only). Syncs on start, a few seconds after any change, when the app comes back into view, and with "Sync now". Newest copy of each route wins; deleted routes stay deleted.
+- **🎲 Random route:** start (typed or picked on the map), "up to N miles away" and/or "about N minutes", loop back to start or not, avoid motorways (on by default). Random spots are snapped to roads with Street View (free look-ups), then up to 4 tries adjust the size to hit the time. **🎲 Another** makes a fresh one with the same settings.
+
 ## Files
 - `index.html`, `css/app.css` — the page
 - `js/app.js` — screens and buttons
@@ -38,6 +42,8 @@ See `route-rehearser-HANDOVER.md` for the full plan.
 - `js/overlay.js` — the maths for the route line over Street View
 - `js/osm.js` — lanes, speed limits and signals from OpenStreetMap
 - `js/units.js` — yards/miles or metres/km
+- `js/cloud.js` — cloud saving to a private GitHub repository (merge rules are tested)
+- `js/random.js` — random route maths
 - `js/config.js` — the Google key (restricted to this site)
 
 Tests (no Google needed): `node --test tests/*.test.mjs`
